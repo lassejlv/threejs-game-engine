@@ -43,4 +43,6 @@ export type { DebugLines, RaycastHit, RaycastOptions, ShapeHit } from './physics
 export { damp, dampAngle, moveTowards, mulberry32 } from './utils/math'
 export { disposeObject } from './utils/dispose'
 export { postEnabled } from './render/postSettings'
+export { defaultNavSettings, NavGrid } from './navigation/NavGrid'
+export type { NavBounds, NavQueries, NavSettings } from './navigation/NavGrid'
 export type { PostSettings } from './render/postSettings'

@@ -2,6 +2,9 @@
  * The serializable project format. The editor only ever edits this plain
  * data; edit mode and play mode are both built from it.
  */
+import { defaultNavSettings, type NavSettings } from '../engine/navigation/NavGrid'
+import type { AnimStateDef, AnimTransitionDef } from './runtime/animator'
+
 export type Vec3 = [number, number, number]
 export type Primitive = 'box' | 'sphere' | 'cylinder' | 'capsule' | 'plane' | 'cone' | 'torus'
 export type LightType = 'directional' | 'point' | 'spot' | 'hemisphere'
@@ -52,6 +55,9 @@ export interface ModelDoc {
   lods: ModelLodDoc[]
   /** Hide the model beyond this distance; 0 = never. */
   cullDistance: number
+  /** Animation state machine: the first state plays on start (instead of `animation`). Empty = off. */
+  animStates: AnimStateDef[]
+  animTransitions: AnimTransitionDef[]
 }
 
 export interface ModelLodDoc {
@@ -280,6 +286,8 @@ export interface SceneSettings {
   vignette: number
   saturation: number
   contrast: number
+  /** Pathfinding grid for ctx.nav, baked from static colliders when a script first needs it. */
+  navigation: NavSettings
 }
 
 export type ShadowQuality = 'off' | 'low' | 'medium' | 'high'
@@ -418,6 +426,8 @@ export const componentDefaults = {
     animationLoop: true,
     lods: [],
     cullDistance: 0,
+    animStates: [],
+    animTransitions: [],
   }),
   light: (): LightDoc => ({
     type: 'point',
@@ -546,6 +556,7 @@ export function defaultSettings(): SceneSettings {
     vignette: 0,
     saturation: 1,
     contrast: 1,
+    navigation: defaultNavSettings(),
   }
 }
 
@@ -719,7 +730,7 @@ export function parseProject(json: unknown): ProjectDoc {
     scenes: doc.scenes.map((scene) => ({
       id: scene.id ?? newId(),
       name: scene.name ?? 'Scene',
-      settings: { ...defaultSettings(), ...scene.settings },
+      settings: { ...defaultSettings(), ...scene.settings, navigation: { ...defaultNavSettings(), ...scene.settings?.navigation } },
       entities: (scene.entities ?? []).map(migrateEntity),
     })),
     prefabs: (doc.prefabs ?? []).map((p) => ({ ...p, entities: p.entities.map(migrateEntity) })),

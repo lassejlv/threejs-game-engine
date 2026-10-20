@@ -355,7 +355,10 @@ export class NodeFactory {
       node.userData.animator = animator
       visual.userData.animator = animator
       this.animators.add(animator)
-      if (model.animation) animator.play(model.animation, { speed: model.animationSpeed, loop: model.animationLoop, fade: 0 })
+      if (model.animStates.length) {
+        animator.configure(model.animStates, model.animTransitions)
+        for (const error of animator.errors) log('warn', `${entity.name}: animation ${error}`)
+      } else if (model.animation) animator.play(model.animation, { speed: model.animationSpeed, loop: model.animationLoop, fade: 0 })
     }
     const url = this.library.url(model.asset!)
     if (!url) {

@@ -1,4 +1,15 @@
-import { AudioListener, BufferAttribute, BufferGeometry, type Group, LineBasicMaterial, LineSegments, type PerspectiveCamera, Vector3 } from 'three'
+import {
+  AudioListener,
+  BufferAttribute,
+  BufferGeometry,
+  type Group,
+  LineBasicMaterial,
+  LineSegments,
+  type PerspectiveCamera,
+  Points,
+  PointsMaterial,
+  Vector3,
+} from 'three'
 import {
   boxCollider,
   capsuleCollider,
@@ -226,7 +237,7 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
 
       const physics = new RapierPhysics(engine, R)
       const listener = new AudioListener()
-      const session = new PlaySession(engine, doc, physics, listener, options.assets)
+      const session = new PlaySession(engine, doc, physics, listener, options.assets, scene.settings.navigation)
       const factory = new NodeFactory(engine, options.assets, false, listener)
       const batcher = new MeshBatcher(engine.scene)
       const builder = new PlayBuilder(engine, factory, session, batcher, doc.settings)
@@ -282,16 +293,24 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
         const lines = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true, fog: false }))
         lines.frustumCulled = false
         lines.renderOrder = 999
-        engine.scene.add(lines)
+        // Walkable navigation cells, once a script has baked the grid.
+        const navPoints = new Points(new BufferGeometry(), new PointsMaterial({ color: 0x4fd1ff, size: 4, sizeAttenuation: false, depthTest: false, fog: false }))
+        navPoints.frustumCulled = false
+        navPoints.renderOrder = 999
+        engine.scene.add(lines, navPoints)
         engine.addSystem({
           name: 'physics.debug',
           phase: 'render',
           run: () => {
-            lines.visible = show()
+            lines.visible = navPoints.visible = show()
             if (!lines.visible) return
             const { vertices, colors } = physics.debugLines()
             lines.geometry.setAttribute('position', new BufferAttribute(vertices, 3))
             lines.geometry.setAttribute('color', new BufferAttribute(colors, 4))
+            const nav = session.navigation.debugPoints()
+            if (nav && navPoints.geometry.getAttribute('position')?.count !== nav.length / 3) {
+              navPoints.geometry.setAttribute('position', new BufferAttribute(nav, 3))
+            }
           },
         })
       }

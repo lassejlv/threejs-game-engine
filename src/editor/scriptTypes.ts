@@ -104,8 +104,14 @@ declare module 'engine' {
   interface AudioSource { play(): void; stop(): void; setVolume(volume: number): void; readonly playing: boolean }
 
   interface Animation {
+    /** Plays a clip, or enters a state-machine state by name. */
     play(clip: string, options?: { fade?: number; loop?: boolean; speed?: number }): void
     stop(fade?: number): void
+    /** Sets a state-machine parameter used by transition conditions and blends. */
+    set(param: string, value: number | boolean): void
+    get(param: string): number | boolean | undefined
+    /** One-shot parameter, true until a transition that checks it fires. */
+    trigger(name: string): void
     readonly clips: string[]
     readonly current: string | null
   }
@@ -125,6 +131,18 @@ declare module 'engine' {
   }
 
   interface Timer { cancel(): void; readonly done: boolean }
+
+  interface Nav {
+    /** Walkable waypoints between two points, or null if unreachable. The grid is baked from static colliders on first use. */
+    findPath(from: Vec3Like, to: Vec3Like): T3.Vector3[] | null
+    /** Walks this entity to a point, or keeps following a moving entity. Returns false if there's no path. */
+    moveTo(target: Vec3Like | Handle, options?: { speed?: number; stoppingDistance?: number; face?: boolean }): boolean
+    stop(): void
+    readonly moving: boolean
+    readonly path: readonly T3.Vector3[]
+    /** A random walkable point, optionally within radius of this entity. */
+    randomPoint(radius?: number): T3.Vector3 | null
+  }
   type Ease = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'backOut' | 'bounceOut' | 'elasticOut'
   interface TweenOptions {
     ease?: Ease
@@ -152,6 +170,8 @@ declare module 'engine' {
     readonly animation: Animation | undefined
     /** Present when the entity has a Particle Emitter. */
     readonly particles: Particles | undefined
+    /** Pathfinding over the scene's static colliders. */
+    readonly nav: Nav
     readonly sceneName: string
     readonly engine: any
     find(name: string): Handle | undefined

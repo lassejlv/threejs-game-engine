@@ -1,5 +1,6 @@
 import type RAPIER_NS from '@dimforge/rapier3d-compat'
-import { Quaternion, Vector3 } from 'three'
+import { Box3, Matrix4, Quaternion, Vector3 } from 'three'
+import type { NavBounds, NavQueries } from '../navigation/NavGrid'
 import { Collider, type ColliderData, Joint, RigidBody, type RigidBodyData, Transform } from '../components'
 import type { Engine } from '../core/Engine'
 import type { System } from '../core/System'
@@ -86,6 +87,8 @@ export class RapierPhysics {
   private readonly pendingJoints = new Set<Entity>()
   /** Bodies with forces or torques this step; Rapier keeps forces until reset. */
   private readonly forced = new Set<RapierBody>()
+  /** Colliders were added since the last step, so the query structures don't know them yet. */
+  private queriesStale = false
   /** Fixed body that world-anchored joints attach to. */
   private ground: RapierBody | null = null
   private readonly unhook: (() => void)[] = []
@@ -140,6 +143,7 @@ export class RapierPhysics {
   }
 
   raycast(origin: Vector3, direction: Vector3, maxDistance = 100, { exclude, triggers = false }: RaycastOptions = {}): RaycastHit | null {
+    this.flush()
     const dir = direction.clone().normalize()
     const ray = new this.R.Ray(origin, dir)
     const excluded = exclude === undefined ? undefined : this.colliderOf(exclude)
@@ -209,6 +213,7 @@ export class RapierPhysics {
 
   /** Entities whose colliders overlap a sphere or box (`halfExtents`) at `center`. */
   overlap(center: Vector3, size: number | Vector3, { exclude, triggers = false }: RaycastOptions = {}): Entity[] {
+    this.flush()
     const { R } = this
     const shape = typeof size === 'number' ? new R.Ball(size) : new R.Cuboid(size.x, size.y, size.z)
     const found = new Set<Entity>()
@@ -230,6 +235,7 @@ export class RapierPhysics {
 
   /** Sweeps a sphere along a direction and returns the first collider it touches. */
   sphereCast(origin: Vector3, radius: number, direction: Vector3, maxDistance = 100, { exclude, triggers = false }: RaycastOptions = {}): ShapeHit | null {
+    this.flush()
     const { R } = this
     const dir = direction.clone().normalize()
     const hit = this.world.castShape(
@@ -253,6 +259,60 @@ export class RapierPhysics {
       point: new Vector3(hit.witness1.x, hit.witness1.y, hit.witness1.z),
       normal: new Vector3(hit.normal1.x, hit.normal1.y, hit.normal1.z),
     }
+  }
+
+  /**
+   * Builds pending bodies and makes queries see them. Rapier only refreshes its
+   * query structures while stepping, so new colliders get a negligible step
+   * (no events, nothing visibly moves).
+   */
+  flush(): void {
+    for (const entity of this.pending) this.create(entity)
+    this.pending.clear()
+    if (!this.queriesStale) return
+    const timestep = this.world.timestep
+    this.world.timestep = 1e-6
+    this.world.step()
+    this.world.timestep = timestep
+    this.queriesStale = false
+  }
+
+  /** Ray and overlap queries against fixed geometry only, for baking a NavGrid. */
+  navQueries(): NavQueries {
+    const { R } = this
+    const fixedOnly = R.QueryFilterFlags.ONLY_FIXED | R.QueryFilterFlags.EXCLUDE_SENSORS
+    return {
+      raycastDown: (x, fromY, z, maxDistance) => {
+        const hit = this.world.castRayAndGetNormal(new R.Ray({ x, y: fromY, z }, down), maxDistance, true, fixedOnly)
+        return hit ? { y: fromY - hit.timeOfImpact, normalY: hit.normal.y } : null
+      },
+      blocked: (center, halfExtents) => {
+        let hit = false
+        this.world.intersectionsWithShape(center, identity, new R.Cuboid(halfExtents.x, halfExtents.y, halfExtents.z), () => {
+          hit = true
+          return false
+        }, fixedOnly)
+        return hit
+      },
+    }
+  }
+
+  /** World bounds of all static (body-less), non-trigger collider shapes. */
+  staticBounds(): NavBounds | null {
+    const box = new Box3()
+    const part = new Box3()
+    const pose = new Matrix4()
+    for (const [entity, entry] of this.statics) {
+      const shape = this.engine.world.tryGet(entity, Collider)
+      if (!shape || shape.trigger) continue
+      // The collider's own extents (scale is already baked in), placed at its world pose.
+      part.min.copy(shape.halfExtents).negate()
+      part.max.copy(shape.halfExtents)
+      const t = entry.collider.translation()
+      const r = entry.collider.rotation()
+      box.union(part.applyMatrix4(pose.compose(position.set(t.x, t.y, t.z), quaternion.set(r.x, r.y, r.z, r.w), scale.set(1, 1, 1))))
+    }
+    return box.isEmpty() ? null : { min: box.min, max: box.max }
   }
 
   debugLines(): DebugLines {
@@ -303,6 +363,7 @@ export class RapierPhysics {
 
     this.syncStatics()
     this.world.step(this.events)
+    this.queriesStale = false
     for (const body of this.forced) {
       if (!this.world.bodies.contains(body.handle)) continue
       body.resetForces(false)
@@ -412,6 +473,7 @@ export class RapierPhysics {
       const offset = shape!.offset.clone().applyQuaternion(quaternion)
       desc.setTranslation(position.x + offset.x, position.y + offset.y, position.z + offset.z).setRotation(quaternion)
       const collider = this.world.createCollider(desc)
+      this.queriesStale = true
       this.entityOf.set(collider.handle, entity)
       this.statics.set(entity, { collider, position: position.clone(), quaternion: quaternion.clone() })
       return
@@ -435,6 +497,7 @@ export class RapierPhysics {
       const cdesc = this.colliderDesc(shape, data)
       cdesc.setTranslation(shape.offset.x, shape.offset.y, shape.offset.z)
       collider = this.world.createCollider(cdesc, body)
+      this.queriesStale = true
       this.entityOf.set(collider.handle, entity)
     }
 

@@ -935,3 +935,18 @@ body.resizing canvas {
   background: var(--accent);
   color: white;
 }
+.anim-machine .subhead {
+  margin: 10px 0 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.anim-state {
+  border-left: 2px solid var(--border);
+  padding-left: 6px;
+  margin: 4px 0 8px;
+}
+.blend-point {
+  border-top: 1px dashed var(--border);
+}

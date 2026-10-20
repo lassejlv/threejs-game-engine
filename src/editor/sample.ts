@@ -411,6 +411,26 @@ export function sampleProject(): ProjectDoc {
     const angle = (i / 8) * Math.PI * 2
     bonus.push(instance(coin, [Math.cos(angle) * 5, 1, Math.sin(angle) * 5]))
   }
+  // A ghost that finds its way to the player (pathfinding) and stings on contact.
+  bonus.push(
+    createEntity('Ghost', {
+      transform: at([7, 0.9, 7], [0, 0, 0], [0.9, 0.9, 0.9]),
+      mesh: mesh({ shape: 'sphere', color: '#e8e2ff', emissive: '#7a5cff', emissiveIntensity: 0.8, opacity: 0.85 }),
+      collider: { ...componentDefaults.collider(), shape: 'sphere', trigger: true },
+      scripts: [
+        { script: 'builtin:Chase', params: { range: 14, giveUp: 25, speed: 2.2, stopAt: 0.2 } },
+        { script: 'builtin:Hazard', params: { target: 'Player', knockback: 10 } },
+      ],
+    }),
+    // Pillars to walk around.
+    ...[[-3, 3], [3, -3], [3, 3]].map(([x, z]) =>
+      createEntity('Pillar', {
+        transform: at([x, 1.5, z], [0, 0, 0], [0.8, 3, 0.8]),
+        mesh: mesh({ shape: 'cylinder', color: '#6b5a9e', roughness: 0.8 }),
+        collider: { ...componentDefaults.collider(), shape: 'cylinder', radius: 0.5, height: 1 },
+      }),
+    ),
+  )
   const bonusRoom: SceneDoc = {
     id: newId(),
     name: 'Bonus Room',

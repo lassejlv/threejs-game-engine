@@ -3,6 +3,7 @@ import type { Engine, Entity, Input, RigidBodyData, Time } from '../engine'
 import { damp, dampAngle, moveTowards, teleport } from '../engine'
 import type { ParamValue, ProjectDoc } from './document'
 import type { AnimationApi } from './runtime/animator'
+import type { NavApi } from './runtime/navigation'
 import type { ParticlesApi } from './runtime/particles'
 import type { TimerHandle, TweenOptions } from './runtime/timers'
 import type { UiApi } from './runtime/gameUi'
@@ -102,6 +103,8 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly animation: AnimationApi | undefined
   /** Present when the entity has a Particle Emitter. */
   readonly particles: ParticlesApi | undefined
+  /** Pathfinding over the scene's static geometry. */
+  readonly nav: NavApi
   /** Name of the running scene. */
   readonly sceneName: string
   find(name: string): Handle | undefined
@@ -297,6 +300,12 @@ const PlayerController: Behavior = {
   },
   update(ctx, dt) {
     const v = ctx.body?.velocity
+    // Parameters for an animation state machine on the player's model.
+    if (ctx.animation && v) {
+      ctx.animation.set('speed', Math.hypot(v.x, v.z))
+      ctx.animation.set('verticalSpeed', v.y)
+      ctx.animation.set('grounded', ctx.body?.grounded ?? true)
+    }
     if (!v || v.x * v.x + v.z * v.z < 0.5) return
     ctx.object.rotation.y = dampAngle(ctx.object.rotation.y, Math.atan2(-v.x, -v.z), 14, dt)
   },
@@ -567,8 +576,42 @@ const Door: Behavior = {
   },
 }
 
+const Chase: Behavior = {
+  name: 'Chase',
+  description: 'Walks after the target along walkable ground (pathfinding) once it comes within range, and gives up when it gets away.',
+  params: { target: 'Player', range: 12, giveUp: 20, speed: 3.5, stopAt: 1.2 },
+  update(ctx) {
+    const p = ctx.params as { target: string; range: number; giveUp: number; speed: number; stopAt: number }
+    const target = ctx.find(p.target)
+    if (!target) return
+    const distance = target.object.getWorldPosition(v1).distanceTo(ctx.object.getWorldPosition(v2))
+    if (!ctx.nav.moving && distance < p.range) ctx.nav.moveTo(target, { speed: p.speed, stoppingDistance: p.stopAt })
+    else if (ctx.nav.moving && distance > p.giveUp) ctx.nav.stop()
+  },
+}
+
+const Wander: Behavior = {
+  name: 'Wander',
+  description: 'Strolls to random walkable points nearby, pausing in between (pathfinding).',
+  params: { radius: 8, speed: 2, pause: 1.5 },
+  start(ctx) {
+    ctx.state.home = ctx.object.getWorldPosition(new THREE.Vector3())
+    ctx.state.wait = Math.random() * 1.5
+  },
+  update(ctx, dt) {
+    const p = ctx.params as { radius: number; speed: number; pause: number }
+    const s = ctx.state as { home: THREE.Vector3; wait: number }
+    if (ctx.nav.moving) return
+    s.wait -= dt
+    if (s.wait > 0) return
+    s.wait = p.pause
+    const grid = ctx.nav.randomPoint(p.radius)
+    if (grid && grid.distanceTo(s.home) <= p.radius * 1.5) ctx.nav.moveTo(grid, { speed: p.speed })
+  },
+}
+
 export const BUILTINS: Record<string, Behavior> = Object.fromEntries(
-  [Rotate, Bob, PlayerController, FollowCamera, Collectible, DestroyBelow, MovingPlatform, Patrol, Health, Hazard, Checkpoint, Door].map(
+  [Rotate, Bob, PlayerController, FollowCamera, Collectible, DestroyBelow, MovingPlatform, Patrol, Health, Hazard, Checkpoint, Door, Chase, Wander].map(
     (b) => [`builtin:${b.name}`, b],
   ),
 )

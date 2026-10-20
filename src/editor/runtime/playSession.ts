@@ -1,8 +1,9 @@
 import { Audio, type AudioListener, Object3D, PositionalAudio } from 'three'
-import { defineComponent, type Engine, type Entity, type RapierPhysics, type System } from '../../engine'
+import { defaultNavSettings, defineComponent, type Engine, type Entity, type NavSettings, type RapierPhysics, type System } from '../../engine'
 import { log } from '../console'
 import type { Animator } from './animator'
 import type { ParticleEmitter } from './particles'
+import { Navigation } from './navigation'
 import { Timers } from './timers'
 import { GameUi } from './gameUi'
 import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
@@ -68,6 +69,8 @@ export class PlaySession {
       return false
     }
   })
+  /** Pathfinding grid and walking agents (`ctx.nav`). */
+  readonly navigation: Navigation
   /** Script-to-script events (`ctx.emit` / `ctx.on`). */
   private readonly listeners = new Map<string, { owner: Entity; fn: (data: unknown) => void }[]>()
 
@@ -77,7 +80,9 @@ export class PlaySession {
     private readonly rapier: RapierPhysics,
     private readonly listener: AudioListener,
     private readonly assets: AssetResolver,
+    navSettings: NavSettings = defaultNavSettings(),
   ) {
+    this.navigation = new Navigation(rapier, navSettings, (entity) => engine.world.isAlive(entity))
     this.ui = new GameUi(engine.container, (fn) => {
       try {
         fn()
@@ -174,6 +179,7 @@ export class PlaySession {
       },
       { name: 'scripts.update', phase: 'update', run: run('update') },
       { name: 'scripts.timers', phase: 'update', order: 5, run: (_engine, dt) => this.timers.update(dt) },
+      { name: 'nav.agents', phase: 'fixed', order: -40, run: (_engine, dt) => this.navigation.update(dt) },
       { name: 'scripts.lateUpdate', phase: 'late', run: run('lateUpdate') },
       {
         name: 'ui.labels',
@@ -268,6 +274,7 @@ export class PlaySession {
       audio: audioApi(handle.object.userData.audio as Audio | undefined),
       animation: handle.object.userData.animator as Animator | undefined,
       particles: handle.object.userData.particles as ParticleEmitter | undefined,
+      nav: this.navigation.api(handle),
       get sceneName() {
         return session.runtime.sceneName
       },
@@ -410,6 +417,7 @@ export class PlaySession {
     if (!world.isAlive(entity)) return
     for (const child of this.children.get(entity) ?? []) this.destroy(child)
     this.timers.cancelOwner(entity)
+    this.navigation.stop(entity)
     for (const [name, list] of this.listeners) this.listeners.set(name, list.filter((e) => e.owner !== entity))
     for (const instance of world.tryGet(entity, Scripts) ?? []) {
       const fn = instance.behavior.onDestroy
