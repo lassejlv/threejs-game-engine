@@ -1,6 +1,7 @@
 import { Audio, type AudioListener, Object3D, PositionalAudio } from 'three'
 import { defineComponent, type Engine, type Entity, type RapierPhysics, type System } from '../../engine'
 import { log } from '../console'
+import type { Animator } from './animator'
 import { GameUi } from './gameUi'
 import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
 import {
@@ -190,6 +191,7 @@ export class PlaySession {
       physics,
       sound: this.sound,
       audio: audioApi(handle.object.userData.audio as Audio | undefined),
+      animation: handle.object.userData.animator as Animator | undefined,
       get sceneName() {
         return session.runtime.sceneName
       },

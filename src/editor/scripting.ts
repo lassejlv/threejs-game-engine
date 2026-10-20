@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { Engine, Entity, Input, RigidBodyData, Time } from '../engine'
 import { damp, dampAngle, moveTowards, teleport } from '../engine'
 import type { ParamValue, ProjectDoc } from './document'
+import type { AnimationApi } from './runtime/animator'
 import type { UiApi } from './runtime/gameUi'
 
 /** A live entity as seen from scripts. */
@@ -76,6 +77,8 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly sound: SoundApi
   /** Present when the entity has an Audio Source. */
   readonly audio: AudioSourceApi | undefined
+  /** Present when the entity has a Model; controls its glTF animation clips. */
+  readonly animation: AnimationApi | undefined
   /** Name of the running scene. */
   readonly sceneName: string
   find(name: string): Handle | undefined

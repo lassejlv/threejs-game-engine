@@ -30,9 +30,13 @@ import {
   Float32BufferAttribute,
   MathUtils,
 } from 'three'
-import type { Engine } from '../../engine'
+import { createStore, type Engine } from '../../engine'
 import { log } from '../console'
 import type { EntityDoc, Primitive } from '../document'
+import { Animator } from './animator'
+
+/** Animation clip names per model asset, filled as models load (for the inspector's clip picker). */
+export const modelClips = createStore<Record<string, string[]>>({})
 
 /** Anything that can turn an asset id into a loadable URL (the editor's IndexedDB library, or an exported game's bundle). */
 export interface AssetResolver {
@@ -82,6 +86,9 @@ export class NodeFactory {
     private readonly listener?: AudioListener,
   ) {}
 
+  /** Play mode: every model animator, updated by the play scene each frame. */
+  readonly animators = new Set<Animator>()
+
   createNode(entity: EntityDoc): Group {
     const node = new Group()
     node.name = entity.name
@@ -116,6 +123,7 @@ export class NodeFactory {
     node.userData.visual = visual
     node.add(visual)
     node.userData.camera = undefined
+    node.userData.animator = undefined
 
     if (entity.mesh) {
       const m = entity.mesh
@@ -141,7 +149,7 @@ export class NodeFactory {
       visual.add(mesh)
     }
 
-    if (entity.model?.asset) this.loadModel(visual, entity)
+    if (entity.model?.asset) this.loadModel(node, visual, entity)
 
     if (entity.light) {
       const l = entity.light
@@ -236,8 +244,15 @@ export class NodeFactory {
       .catch((error: unknown) => log('error', `${entity.name}: failed to load audio`, error))
   }
 
-  private loadModel(visual: Group, entity: EntityDoc): void {
+  private loadModel(node: Group, visual: Group, entity: EntityDoc): void {
     const model = entity.model!
+    const animator = this.editorMode ? null : new Animator()
+    if (animator) {
+      node.userData.animator = animator
+      visual.userData.animator = animator
+      this.animators.add(animator)
+      if (model.animation) animator.play(model.animation, { speed: model.animationSpeed, loop: model.animationLoop, fade: 0 })
+    }
     const url = this.library.url(model.asset!)
     if (!url) {
       log('warn', `${entity.name}: model asset is missing`)
@@ -253,6 +268,10 @@ export class NodeFactory {
           o.receiveShadow = model.receiveShadow
         })
         visual.add(instance)
+        if (gltf.animations.length) {
+          modelClips.set({ [model.asset!]: gltf.animations.map((c) => c.name) })
+          animator?.attach(instance, gltf.animations)
+        }
       })
       .catch((error: unknown) => log('error', `${entity.name}: failed to load model`, error))
   }
@@ -267,6 +286,7 @@ function configureShadow(light: DirectionalLight | PointLight | SpotLight, enabl
 
 /** Disposes per-entity GPU resources (materials, light shadows), keeping shared geometry. */
 export function disposeVisual(visual: Object3D): void {
+  ;(visual.userData.animator as Animator | undefined)?.dispose()
   visual.traverse((o) => {
     if (o.userData.fromAsset) return
     const mesh = o as Mesh

@@ -135,7 +135,8 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
       const physics = new RapierPhysics(engine, R)
       const listener = new AudioListener()
       const session = new PlaySession(engine, doc, physics, listener, options.assets)
-      const builder = new PlayBuilder(engine, new NodeFactory(engine, options.assets, false, listener), session)
+      const factory = new NodeFactory(engine, options.assets, false, listener)
+      const builder = new PlayBuilder(engine, factory, session)
       session.connect({
         sceneName: scene.name,
         spawn: (prefabName, spawn) => {
@@ -167,6 +168,20 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
       }
       for (const system of physics.systems()) engine.addSystem(system)
       for (const system of session.systems()) engine.addSystem(system)
+      engine.addSystem({
+        name: 'animation',
+        phase: 'update',
+        order: 10,
+        run: (_engine, dt) => {
+          for (const animator of factory.animators) {
+            if (animator.isIn(engine.scene)) animator.update(dt)
+            else {
+              animator.dispose()
+              factory.animators.delete(animator)
+            }
+          }
+        },
+      })
       options.onStart?.(engine)
     },
   })

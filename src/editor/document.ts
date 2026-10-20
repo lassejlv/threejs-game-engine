@@ -32,6 +32,10 @@ export interface ModelDoc {
   asset: string | null
   castShadow: boolean
   receiveShadow: boolean
+  /** Clip to play on start in play mode ('' = none). */
+  animation: string
+  animationSpeed: number
+  animationLoop: boolean
 }
 
 export interface LightDoc {
@@ -201,7 +205,14 @@ export const componentDefaults = {
     castShadow: true,
     receiveShadow: true,
   }),
-  model: (): ModelDoc => ({ asset: null, castShadow: true, receiveShadow: true }),
+  model: (): ModelDoc => ({
+    asset: null,
+    castShadow: true,
+    receiveShadow: true,
+    animation: '',
+    animationSpeed: 1,
+    animationLoop: true,
+  }),
   light: (): LightDoc => ({
     type: 'point',
     color: '#ffffff',
@@ -444,5 +455,6 @@ function migrateEntity(raw: EntityDoc): EntityDoc {
   }
   if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
   if (e.audio) e.audio = { ...componentDefaults.audio(), ...e.audio }
+  if (e.model) e.model = { ...componentDefaults.model(), ...e.model }
   return e
 }

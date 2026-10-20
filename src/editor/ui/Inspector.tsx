@@ -38,6 +38,7 @@ import {
   Vec3Field,
 } from './fields'
 import { sceneView } from '../runtime/editScene'
+import { modelClips } from '../runtime/nodes'
 import { Icon } from './icons'
 
 type Patch<K extends keyof EntityDoc> = Partial<NonNullable<EntityDoc[K]>>
@@ -268,6 +269,13 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
       {entity.model && (
         <Section title={COMPONENT_LABELS.model} icon={<Icon name="model" />} onRemove={() => removeComponent('model')}>
           <AssetSelect kind="model" label="Asset" value={entity.model.asset} onChange={(asset) => setComponent('model', { asset }, 'asset')} />
+          <ClipSelect asset={entity.model.asset} value={entity.model.animation} onChange={(animation) => setComponent('model', { animation }, 'anim')} />
+          {entity.model.animation && (
+            <>
+              <NumberField label="Speed" value={entity.model.animationSpeed} step={0.05} min={0} onChange={(animationSpeed) => setComponent('model', { animationSpeed }, 'aspeed')} />
+              <CheckField label="Loop" value={entity.model.animationLoop} onChange={(animationLoop) => setComponent('model', { animationLoop }, 'aloop')} />
+            </>
+          )}
           <CheckField label="Cast shadow" value={entity.model.castShadow} onChange={(castShadow) => setComponent('model', { castShadow }, 'cs')} />
           <CheckField label="Receive shadow" value={entity.model.receiveShadow} onChange={(receiveShadow) => setComponent('model', { receiveShadow }, 'rs')} />
         </Section>
@@ -463,6 +471,19 @@ function ScriptSection({
         </Row>
       )}
     </Section>
+  )
+}
+
+function ClipSelect({ asset, value, onChange }: { asset: string | null; value: string; onChange: (clip: string) => void }) {
+  const clips = useStore(modelClips, (s) => (asset ? s[asset] : undefined))
+  if (!clips?.length && !value) return null
+  return (
+    <SelectField
+      label="Animation"
+      value={value}
+      options={[['', 'None'], ...(clips ?? []).map((c) => [c, c] as const), ...(value && !clips?.includes(value) ? [[value, value] as const] : [])]}
+      onChange={onChange}
+    />
   )
 }
 

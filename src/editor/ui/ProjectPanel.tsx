@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useStore } from '../../react'
 import { consoleStore } from '../console'
-import { createEntity } from '../document'
+import { componentDefaults, createEntity } from '../document'
 import {
   addEntity,
   addPrefabInstance,
@@ -254,7 +254,7 @@ function ProjectPanel() {
                       addEntity(
                         createEntity(a.name.replace(/\.\w+$/, ''), {
                           transform: { position: sceneView.spawnPoint(), rotation: [0, 0, 0], scale: [1, 1, 1] },
-                          model: { asset: a.id, castShadow: true, receiveShadow: true },
+                          model: { ...componentDefaults.model(), asset: a.id },
                         }),
                       )
                     }
