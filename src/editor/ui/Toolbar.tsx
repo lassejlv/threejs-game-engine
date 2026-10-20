@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { createStore, type Engine } from '../../engine'
 import { useStore } from '../../react'
+import { log } from '../console'
 import { createEntity } from '../document'
 import {
   addEntity,
@@ -21,7 +22,7 @@ import { sceneView } from '../runtime/editScene'
 import { TextInput } from './fields'
 import { Icon, type IconName } from './icons'
 import { Menu, type MenuItem } from './Menu'
-import { importProjectFile, newProjectFromTemplate, projectStore } from '../projects'
+import { exportBundle, importProjectFile, newProjectFromTemplate, projectStore } from '../projects'
 import { ProjectSettingsDialog } from './ProjectSettings'
 import { ProjectsDialog } from './ProjectsDialog'
 import { TemplateDialog } from './TemplateDialog'
@@ -73,18 +74,19 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
             { label: 'New project…', onSelect: () => setTemplatesOpen(true) },
             { label: 'Open project…', onSelect: () => setProjectsOpen(true) },
             { label: 'Import project…', onSelect: () => fileInput.current?.click() },
-            { label: 'Export project (.json)', onSelect: exportProject },
+            { label: 'Export project (.zip)', onSelect: () => void exportBundle().catch(reportError) },
+            { label: 'Export document only (.json)', onSelect: exportProject },
             { label: 'Project settings…', onSelect: () => setSettingsOpen(true) },
           ]}
         />
         <input
           ref={fileInput}
           type="file"
-          accept=".json,application/json"
+          accept=".zip,.json,application/zip,application/json"
           hidden
           onChange={(e) => {
             const file = e.target.files?.[0]
-            if (file) void importProjectFile(file)
+            if (file) void importProjectFile(file).catch(reportError)
             e.target.value = ''
           }}
         />
@@ -161,7 +163,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
             if (!projectStore() && !confirmDiscard()) return
             setTemplatesOpen(false)
             setProjectsOpen(false)
-            newProjectFromTemplate(template).catch((error: unknown) => window.alert(error instanceof Error ? error.message : String(error)))
+            newProjectFromTemplate(template).catch(reportError)
           }}
         />
       )}
@@ -196,6 +198,11 @@ function SaveStatus() {
       {text}
     </span>
   )
+}
+
+function reportError(error: unknown): void {
+  log('error', error)
+  window.alert(error instanceof Error ? error.message : String(error))
 }
 
 function confirmDiscard(): boolean {

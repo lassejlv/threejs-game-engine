@@ -16,8 +16,9 @@ interface AssetRecord extends AssetMeta {
   type: string
 }
 
-/** A Blob's bytes (FileReader works in every browser and in jsdom). */
+/** A Blob's bytes (FileReader where Blob.arrayBuffer is missing, as in jsdom). */
 export function readBytes(blob: Blob): Promise<ArrayBuffer> {
+  if (typeof blob.arrayBuffer === 'function') return blob.arrayBuffer()
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as ArrayBuffer)

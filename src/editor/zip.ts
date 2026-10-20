@@ -1,4 +1,4 @@
-/** A minimal ZIP writer (files stored uncompressed): enough to package an exported web app. */
+/** A minimal ZIP writer (files stored uncompressed) and reader (stored or deflated): enough for web-app exports and project bundles. */
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256)
@@ -68,4 +68,49 @@ export function zip(entries: ZipEntry[]): Blob {
   e.setUint32(12, size, true)
   e.setUint32(16, offset, true)
   return new Blob([...parts, ...central, end] as BlobPart[], { type: 'application/zip' })
+}
+
+/**
+ * Reads a ZIP archive into name → bytes. Handles stored and deflated entries
+ * (what OS zip tools write); folders are skipped.
+ */
+export async function unzip(input: Uint8Array): Promise<Map<string, Uint8Array>> {
+  const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
+  // The end-of-central-directory record sits in the last 22 bytes plus an optional comment.
+  let end = -1
+  for (let i = input.length - 22; i >= Math.max(0, input.length - 22 - 0xffff); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      end = i
+      break
+    }
+  }
+  if (end < 0) throw new Error('Not a zip file')
+  const count = view.getUint16(end + 10, true)
+  let pos = view.getUint32(end + 16, true)
+  const decoder = new TextDecoder()
+  const files = new Map<string, Uint8Array>()
+  for (let n = 0; n < count; n++) {
+    if (view.getUint32(pos, true) !== 0x02014b50) throw new Error('Damaged zip file (central directory)')
+    const method = view.getUint16(pos + 10, true)
+    const compressedSize = view.getUint32(pos + 20, true)
+    const nameLength = view.getUint16(pos + 28, true)
+    const extraLength = view.getUint16(pos + 30, true)
+    const commentLength = view.getUint16(pos + 32, true)
+    const localOffset = view.getUint32(pos + 42, true)
+    const name = decoder.decode(input.subarray(pos + 46, pos + 46 + nameLength))
+    pos += 46 + nameLength + extraLength + commentLength
+    if (name.endsWith('/')) continue
+    if (view.getUint32(localOffset, true) !== 0x04034b50) throw new Error(`Damaged zip file (${name})`)
+    const dataStart = localOffset + 30 + view.getUint16(localOffset + 26, true) + view.getUint16(localOffset + 28, true)
+    const data = input.subarray(dataStart, dataStart + compressedSize)
+    if (method === 0) files.set(name, data.slice())
+    else if (method === 8) files.set(name, await inflate(data))
+    else throw new Error(`Unsupported zip compression in ${name}`)
+  }
+  return files
+}
+
+async function inflate(data: Uint8Array): Promise<Uint8Array> {
+  const stream = new Blob([data as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
 }

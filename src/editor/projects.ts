@@ -1,9 +1,10 @@
 import type { AssetMeta } from './assetLibrary'
 import { log } from './console'
 import { parseProject, type ProjectDoc } from './document'
-import { assetLibrary, editorStore, newFromTemplate, replaceDoc } from './editor'
+import { buildBundle, readBundle } from './bundle'
+import { assetLibrary, download, editorStore, newFromTemplate, replaceDoc, slug } from './editor'
 import { sampleProject } from './sample'
-import { BrowserStore, readLegacyProject } from './storage/browserStore'
+import { BrowserStore, readBytes, readLegacyProject } from './storage/browserStore'
 import { DiskStore } from './storage/diskStore'
 import type { ProjectStore, ProjectSummary } from './storage/types'
 import type { Template } from './templates'
@@ -129,16 +130,44 @@ export async function newProjectFromTemplate(template: Template): Promise<void> 
   editorStore.set({ view2D: !!template.view2D })
 }
 
-/** File → Import: a project .json becomes a new project (the open one is kept). */
+/**
+ * File → Import: a bundle (.zip with assets) or a document (.json) becomes a
+ * new project; the open one is kept. Throws with a readable reason on bad files.
+ */
 export async function importProjectFile(file: File): Promise<void> {
-  try {
-    const doc = parseProject(JSON.parse(await file.text()))
-    if (store) await createProject(doc)
-    else replaceDoc(doc)
-    log('log', `Imported ${file.name}`)
-  } catch (error) {
-    log('error', `Could not import ${file.name}:`, error)
+  const bytes = new Uint8Array(await readBytes(file))
+  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4b // "PK"
+  let raw: unknown
+  let assets: { meta: AssetMeta; blob: Blob }[] = []
+  if (isZip) {
+    try {
+      ;({ doc: raw, assets } = await readBundle(bytes))
+    } catch (error) {
+      throw new Error(`${file.name}: ${error instanceof Error ? error.message : String(error)}`)
+    }
   }
+  else {
+    try {
+      raw = JSON.parse(new TextDecoder().decode(bytes))
+    } catch {
+      throw new Error(`${file.name} is neither a project bundle (.zip) nor a project file (.json).`)
+    }
+  }
+  const doc = parseProject(raw)
+  if (store) await createProject(doc, assets)
+  else {
+    replaceDoc(doc)
+    assetLibrary.clear()
+    for (const { meta, blob } of assets) await assetLibrary.put(meta, blob)
+    editorStore.set({ assets: assets.map((a) => a.meta) })
+  }
+  log('log', `Imported ${file.name}${assets.length ? ` with ${assets.length} asset${assets.length === 1 ? '' : 's'}` : ''}`)
+}
+
+/** File → Export project: the document and every asset in one .zip. */
+export async function exportBundle(): Promise<void> {
+  const { doc } = editorStore.get()
+  download(`${slug(doc.name)}.zip`, await buildBundle(doc, assetLibrary.entries()))
 }
 
 export async function duplicateProject(id: string): Promise<ProjectSummary | null> {
