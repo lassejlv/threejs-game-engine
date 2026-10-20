@@ -5,3 +5,4 @@ dist
 public/player
 .claude/worktrees/
 test-results
+projects/
