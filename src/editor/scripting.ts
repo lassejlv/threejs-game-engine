@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { Engine, Entity, Input, RigidBodyData, Time } from '../engine'
 import { damp, dampAngle, moveTowards, teleport } from '../engine'
 import type { ParamValue, ProjectDoc } from './document'
+import type { UiApi } from './runtime/gameUi'
 
 /** A live entity as seen from scripts. */
 export interface Handle {
@@ -54,6 +55,8 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   /** Shared by every script in this play session. */
   readonly globals: Record<string, unknown>
   readonly hud: HudApi
+  /** Screen-space UI: text, buttons, bars and world labels. */
+  readonly ui: UiApi
   readonly physics: PhysicsApi
   /** Name of the running scene. */
   readonly sceneName: string

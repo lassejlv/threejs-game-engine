@@ -24,7 +24,6 @@ import { BottomPanel } from './ProjectPanel'
 import { Hierarchy } from './Hierarchy'
 import { Icon } from './icons'
 import { Inspector } from './Inspector'
-import { PlayHud } from './PlayHud'
 import { ScriptEditor } from './ScriptEditor'
 import { Toolbar } from './Toolbar'
 import '../editor.css'
@@ -47,6 +46,7 @@ export function Editor() {
   const mode = useStore(editorStore, (s) => s.mode)
   const playDoc = useStore(editorStore, (s) => s.playDoc)
   const playSceneId = useStore(editorStore, (s) => s.playScene)
+  const playRun = useStore(editorStore, (s) => s.playRun)
   const view = useStore(editorStore, (s) => s.view)
   const showColliders = useStore(editorStore, (s) => s.showColliders)
 
@@ -63,7 +63,8 @@ export function Editor() {
             },
           })
         : editScene,
-    [mode, playDoc, playSceneId],
+    // playRun restarts the scene even when the id is unchanged.
+    [mode, playDoc, playSceneId, playRun],
   )
 
   useEffect(() => {
@@ -112,7 +113,6 @@ export function Editor() {
               if (import.meta.env.DEV) Object.assign(window, { __engine: e })
             }}
           >
-            <PlayHud />
             <DebugOverlay />
           </GameCanvas>
           <ScriptEditor />

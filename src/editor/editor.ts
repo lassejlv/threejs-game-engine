@@ -43,6 +43,8 @@ export interface EditorState {
   playDoc: ProjectDoc | null
   /** Scene currently running in play mode (changes when scripts call loadScene). */
   playScene: string | null
+  /** Bumped on every scene (re)load in play mode, so reloading the same scene restarts it. */
+  playRun: number
   canUndo: boolean
   canRedo: boolean
   openScript: string | null
@@ -79,6 +81,7 @@ export const editorStore = createStore<EditorState>({
   paused: false,
   playDoc: null,
   playScene: null,
+  playRun: 0,
   canUndo: false,
   canRedo: false,
   openScript: null,
@@ -560,7 +563,7 @@ export function stop(): void {
 
 /** Called by scripts (`ctx.loadScene`) while playing. */
 export function switchPlayScene(sceneId: string): void {
-  if (state().mode === 'play') editorStore.set({ playScene: sceneId })
+  if (state().mode === 'play') editorStore.set((s) => ({ playScene: sceneId, playRun: s.playRun + 1 }))
 }
 
 export function togglePause(): void {

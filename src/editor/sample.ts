@@ -51,6 +51,32 @@ export default {
 }
 `
 
+const MANAGER_SCRIPT = `// Timer, progress bar and a name tag over the player.
+// Offers a restart once every coin is collected.
+export default {
+  params: { counter: 'Coins', player: 'Player' },
+
+  start(ctx) {
+    ctx.state.time = 0
+    const player = ctx.find(ctx.params.player)
+    if (player) ctx.ui.label('tag', 'You', player, { offsetY: 1.5, size: 13 })
+  },
+
+  update(ctx, dt) {
+    const got = ctx.globals[ctx.params.counter + ':got'] ?? 0
+    const total = ctx.globals[ctx.params.counter + ':total'] ?? 0
+    const done = total > 0 && got === total
+    if (!done) ctx.state.time += dt
+    ctx.ui.text('timer', ctx.state.time.toFixed(1) + ' s', { anchor: 'top-right' })
+    ctx.ui.bar('progress', total ? got / total : 0, { anchor: 'top-right', y: 44, label: 'Progress' })
+    if (done && !ctx.state.offered) {
+      ctx.state.offered = true
+      ctx.ui.button('again', 'Play again', () => ctx.loadScene(ctx.sceneName), { y: 64 })
+    }
+  },
+}
+`
+
 /**
  * "Coin Rush": a small platformer built entirely from editor features:
  * prefabs, two scenes, built-in scripts and two project scripts.
@@ -60,8 +86,9 @@ export function sampleProject(): ProjectDoc {
   const scripts: ScriptDoc[] = [
     { id: newId(), name: 'Portal', source: PORTAL_SCRIPT },
     { id: newId(), name: 'BallLauncher', source: LAUNCHER_SCRIPT },
+    { id: newId(), name: 'GameManager', source: MANAGER_SCRIPT },
   ]
-  const [portalScript, launcherScript] = scripts
+  const [portalScript, launcherScript, managerScript] = scripts
 
   const player = prefab(
     'Player',
@@ -197,6 +224,7 @@ export function sampleProject(): ProjectDoc {
   const coins = add(createEntity('Coins'))
   for (const p of coinSpots) add(instance(coin, p, coins.id))
   add(instance(player, [0, 1.5, 0]))
+  add(createEntity('Game Manager', { scripts: [{ script: managerScript.id, params: {} }] }))
 
   const coinRush: SceneDoc = {
     id: newId(),

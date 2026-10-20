@@ -1,12 +1,8 @@
-import { createStore, defineComponent, type Engine, type Entity, type RapierPhysics, type System } from '../../engine'
+import { defineComponent, type Engine, type Entity, type RapierPhysics, type System } from '../../engine'
 import { log } from '../console'
+import { GameUi } from './gameUi'
 import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
 import { type Behavior, type Handle, type HudApi, type PhysicsApi, resolveBehavior, type ScriptContext, type SpawnOptions } from '../scripting'
-
-export const hudStore = createStore({
-  values: {} as Record<string, string | number>,
-  message: null as string | null,
-})
 
 interface Instance {
   behavior: Behavior
@@ -34,22 +30,26 @@ export class PlaySession {
   private readonly handles = new Map<Entity, Handle>()
   private readonly byName = new Map<string, Entity[]>()
   private readonly children = new Map<Entity, Entity[]>()
-  private readonly hud: HudApi = {
-    set: (key, value) => hudStore.set((s) => ({ values: { ...s.values, [key]: value } })),
-    remove: (key) =>
-      hudStore.set((s) => {
-        const { [key]: _removed, ...values } = s.values
-        return { values }
-      }),
-    message: (text) => hudStore.set({ message: text }),
-  }
+  private readonly ui: GameUi
+  private readonly hud: HudApi
 
   constructor(
     private readonly engine: Engine,
     private readonly doc: ProjectDoc,
     private readonly rapier: RapierPhysics,
   ) {
-    hudStore.set({ values: {}, message: null })
+    this.ui = new GameUi(engine.container, (fn) => {
+      try {
+        fn()
+      } catch (error) {
+        log('error', 'UI callback threw:', describe(error))
+      }
+    })
+    this.hud = {
+      set: (key, value) => this.ui.setStat(key, value),
+      remove: (key) => this.ui.removeStat(key),
+      message: (text) => this.ui.message(text),
+    }
   }
 
   connect(runtime: SessionRuntime): void {
@@ -99,11 +99,17 @@ export class PlaySession {
           return () => {
             offEnter()
             offExit()
+            this.ui.dispose()
           }
         },
       },
       { name: 'scripts.update', phase: 'update', run: run('update') },
       { name: 'scripts.lateUpdate', phase: 'late', run: run('lateUpdate') },
+      {
+        name: 'ui.labels',
+        phase: 'render',
+        run: (engine) => this.ui.update(engine.camera, (h) => engine.world.isAlive(h.entity)),
+      },
       {
         // Scene switches wait until the frame is done so no script runs against a torn-down world.
         name: 'scripts.sceneSwitch',
@@ -142,6 +148,7 @@ export class PlaySession {
       state: {},
       globals: this.globals,
       hud: this.hud,
+      ui: this.ui.api,
       physics,
       get sceneName() {
         return session.runtime.sceneName
