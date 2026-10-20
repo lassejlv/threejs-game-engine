@@ -5,6 +5,6 @@
   "editorInitialGzipBytes": 400000,
   "coinRushDrawCalls": 55,
   "coinRushTriangles": 25000,
-  "exportStartScreenMs": 15000,
-  "exportFirstFrameMs": 30000
+  "exportStartScreenMs": 5000,
+  "exportFirstFrameMs": 10000
 }

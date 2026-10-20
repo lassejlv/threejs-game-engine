@@ -14,13 +14,14 @@ import { BROWSER, assert, budgets, collectErrors, countColors, describeGpu, fail
 const log = logger('exports')
 const PORT = Number(process.env.E2E_EXPORT_PORT ?? 5209)
 
-/** Templates, the key that moves their player, and which object should move. */
+/** Templates, the key that moves their player, which object should move, and how many colors a frame has at least. */
 const ALL_GAMES = [
   { card: 'Coin Rush', file: 'coin-rush', key: 'KeyD', mover: 'Player' },
   { card: 'Sky Hopper', file: 'sky-hopper', key: 'KeyD', mover: 'Player' },
   { card: 'Arena', file: 'arena', key: 'KeyW', mover: 'Player' },
   { card: 'Kart Loop', file: 'kart-loop', key: 'KeyW', mover: 'Kart' },
-  { card: 'Empty', file: 'empty' },
+  // A ground plane under a sky: only a few colors, fewer still with Firefox's and WebKit's software rendering.
+  { card: 'Empty', file: 'empty', minColors: 3 },
 ]
 
 // E2E_GAMES=coin-rush,arena runs a subset (Coin Rush is always kept: the error-screen check uses it).
@@ -98,6 +99,7 @@ async function main() {
   let browser
   let page
   let editor
+  let site
   const stopWatchdog = watchdog('exports', 20 * 60_000, () => page ?? editor)
   try {
     await dev.ready()
@@ -124,7 +126,7 @@ async function main() {
     await editor.close()
     writeFileSync(join(out, 'broken.html'), breakGame(readFileSync(join(out, 'coin-rush.html'), 'utf8')))
 
-    const site = await serveDir(out)
+    site = await serveDir(out)
     const timings = []
     for (const game of GAMES) {
       page = await context.newPage()
@@ -133,7 +135,7 @@ async function main() {
       timings.push({ game: game.card, startScreenMs, firstFrameMs })
       await page.waitForTimeout(1000)
       const colors = await countColors(page, page.locator('#game canvas'))
-      assert(colors > 8, `${game.card} renders a scene (${colors} colors)`)
+      assert(colors >= (game.minColors ?? 9), `${game.card} renders a scene (${colors} colors)`)
       let detail = `${colors} colors`
       if (game.key) {
         const moved = await moveWith(page, game.key, game.mover)
@@ -177,7 +179,6 @@ async function main() {
       await gpuBrowser.close()
     }
 
-    site.close()
     // Keep a playable Coin Rush build and the load times next to the screenshots (CI uploads test-results/).
     const results = process.env.E2E_RESULTS_DIR ?? 'test-results'
     mkdirSync(results, { recursive: true })
@@ -192,6 +193,8 @@ async function main() {
     console.error(`[exports] screenshot saved to ${shot}`)
     process.exitCode = 1
   } finally {
+    // The static server would otherwise keep Node running after a failure.
+    site?.close()
     stopWatchdog()
     await browser?.close().catch(() => {})
     dev.stop()
