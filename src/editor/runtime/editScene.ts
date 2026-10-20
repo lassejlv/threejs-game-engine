@@ -71,9 +71,12 @@ class DocSync {
           (previous.mesh !== entity.mesh ||
             previous.model !== entity.model ||
             previous.light !== entity.light ||
-            previous.camera !== entity.camera)
+            previous.camera !== entity.camera ||
+            !previous.particles !== !entity.particles)
         ) {
           this.factory.buildVisual(node, entity)
+        } else if (previous && previous.particles !== entity.particles) {
+          this.factory.reconfigureParticles(node, entity)
         }
       }
       this.seen.set(entity.id, entity)
@@ -113,7 +116,8 @@ export function createEditScene(): GameScene {
 
       const root = new Group()
       scene.add(root)
-      const sync = new DocSync(new NodeFactory(engine, assetLibrary, true), root)
+      const factory = new NodeFactory(engine, assetLibrary, true)
+      const sync = new DocSync(factory, root)
       const outlines = new ColliderOutlines()
       scene.add(outlines.group)
 
@@ -240,6 +244,8 @@ export function createEditScene(): GameScene {
       cleanups.push(() => {
         sceneView.focusSelection = () => {}
       })
+
+      engine.addSystem({ name: 'editor.particles', phase: 'late', order: 100, run: (_engine, dt) => factory.updateParticles(dt) })
 
       engine.addSystem({
         name: 'editor.view',

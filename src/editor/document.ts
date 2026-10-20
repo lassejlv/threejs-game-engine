@@ -86,6 +86,52 @@ export interface RigidBodyDoc {
   restitution: number
 }
 
+export type EmitterShape = 'point' | 'sphere' | 'box'
+
+export interface ParticlesDoc {
+  /** Play mode: start emitting when the entity is created. Scripts can call play/stop/burst. */
+  playOnStart: boolean
+  /** Particles per second while emitting. */
+  rate: number
+  /** Particles emitted at once each time the emitter starts. */
+  burst: number
+  /** Seconds the emitter runs before it stops; 0 = forever. */
+  duration: number
+  maxParticles: number
+  /** Seconds a particle lives. */
+  lifetime: number
+  /** 0..1: how much lifetime, speed and size vary between particles. */
+  randomness: number
+  /** Where particles start, in the entity's local space. */
+  shape: EmitterShape
+  /** Sphere shape radius. */
+  radius: number
+  /** Box shape size. */
+  boxSize: Vec3
+  speed: number
+  /** Cone half-angle around the entity's up axis in degrees: 0 = straight up, 180 = every direction. */
+  spread: number
+  /** Downward acceleration in m/s²; negative values float up. */
+  gravity: number
+  /** Velocity lost per second. */
+  drag: number
+  /** World units. */
+  startSize: number
+  endSize: number
+  startColor: string
+  endColor: string
+  startOpacity: number
+  endOpacity: number
+  /** Additive glows (fire, sparks, magic); normal suits smoke and dust. */
+  blending: 'additive' | 'normal'
+  /** Texture asset id; none draws soft round dots. */
+  texture: string | null
+  /** Particles stay where they were emitted instead of moving with the entity (trails, smoke). */
+  worldSpace: boolean
+  /** Play mode ("Auto destroy"): destroy the entity once it has stopped emitting and its last particle is gone. */
+  destroyWhenDone: boolean
+}
+
 export type ColliderShapeDoc = 'box' | 'sphere' | 'capsule' | 'cylinder'
 
 export interface ColliderDoc {
@@ -118,6 +164,7 @@ export interface EntityDoc {
   light?: LightDoc
   camera?: CameraDoc
   audio?: AudioSourceDoc
+  particles?: ParticlesDoc
   rigidBody?: RigidBodyDoc
   collider?: ColliderDoc
   /**
@@ -171,7 +218,7 @@ export interface ProjectDoc {
   scripts: ScriptDoc[]
 }
 
-export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'audio' | 'rigidBody' | 'collider'
+export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'audio' | 'particles' | 'rigidBody' | 'collider'
 
 export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   mesh: 'Mesh Renderer',
@@ -179,6 +226,7 @@ export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   light: 'Light',
   camera: 'Camera',
   audio: 'Audio Source',
+  particles: 'Particle Emitter',
   rigidBody: 'Rigid Body',
   collider: 'Collider',
 }
@@ -225,6 +273,32 @@ export const componentDefaults = {
   }),
   camera: (): CameraDoc => ({ fov: 60, near: 0.1, far: 1000, main: true }),
   audio: (): AudioSourceDoc => ({ asset: null, volume: 1, loop: false, playOnStart: true, spatial: true, refDistance: 5 }),
+  particles: (): ParticlesDoc => ({
+    playOnStart: true,
+    rate: 20,
+    burst: 0,
+    duration: 0,
+    maxParticles: 500,
+    lifetime: 1.5,
+    randomness: 0.3,
+    shape: 'point',
+    radius: 0.5,
+    boxSize: [1, 1, 1],
+    speed: 2,
+    spread: 25,
+    gravity: 0,
+    drag: 0,
+    startSize: 0.3,
+    endSize: 0.1,
+    startColor: '#ffd27a',
+    endColor: '#ff5a2a',
+    startOpacity: 1,
+    endOpacity: 0,
+    blending: 'additive',
+    texture: null,
+    worldSpace: true,
+    destroyWhenDone: false,
+  }),
   rigidBody: (): RigidBodyDoc => ({
     type: 'dynamic',
     mass: 0,
@@ -456,5 +530,6 @@ function migrateEntity(raw: EntityDoc): EntityDoc {
   if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
   if (e.audio) e.audio = { ...componentDefaults.audio(), ...e.audio }
   if (e.model) e.model = { ...componentDefaults.model(), ...e.model }
+  if (e.particles) e.particles = { ...componentDefaults.particles(), ...e.particles }
   return e
 }

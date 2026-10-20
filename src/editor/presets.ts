@@ -2,7 +2,7 @@ import { componentDefaults, type EntityDoc, type LightType, PRIMITIVE_COLLIDER, 
 
 export interface Preset {
   label: string
-  group: 'General' | '3D Object' | 'Light'
+  group: 'General' | '3D Object' | 'Light' | 'Effects'
   name: string
   create(): Partial<EntityDoc>
 }
@@ -46,4 +46,10 @@ export const PRESETS: Preset[] = [
   light('point', 'Point Light', { intensity: 20, distance: 20 }),
   light('spot', 'Spot Light', { intensity: 40, distance: 30 }),
   light('hemisphere', 'Hemisphere Light'),
+  {
+    label: 'Particle System',
+    group: 'Effects',
+    name: 'Particle System',
+    create: () => ({ particles: componentDefaults.particles() }),
+  },
 ]

@@ -27,6 +27,7 @@ const paths = {
   prefab: 'M8 1.8 13.5 4.8v6.4L8 14.2 2.5 11.2V4.8zM8 5v6M5.4 6.5 8 8l2.6-1.5',
   scene: 'M2 3.5h12v9H2zM2 10l3.5-3 3 2.5L11 7l3 3',
   audio: 'M3 6h2.5L9 3v10L5.5 10H3zM11.5 5.5a3.5 3.5 0 0 1 0 5M13 4a5.5 5.5 0 0 1 0 8',
+  particles: 'M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.5 1.5M10.5 10.5 12 12M4 12l1.5-1.5M10.5 5.5 12 4',
   build: 'M8 2v8M4.5 6.5 8 10l3.5-3.5M3 12.5h10',
   eye: 'M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8zM8 6a2 2 0 1 0 0 4a2 2 0 0 0 0-4z',
   settings: 'M8 5.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 0 0 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4',
@@ -47,5 +48,6 @@ export function entityIcon(entity: EntityDoc): IconName {
   if (entity.light) return 'light'
   if (entity.model) return 'model'
   if (entity.mesh) return 'cube'
+  if (entity.particles) return 'particles'
   return 'empty'
 }

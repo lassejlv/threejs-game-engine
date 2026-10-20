@@ -7,6 +7,7 @@ import {
   instantiatePrefab,
   type MeshDoc,
   newId,
+  type ParticlesDoc,
   type PrefabDoc,
   type ProjectDoc,
   type SceneDoc,
@@ -15,6 +16,7 @@ import {
 } from './document'
 
 const mesh = (patch: Partial<MeshDoc>): MeshDoc => ({ ...componentDefaults.mesh(), ...patch })
+const particles = (patch: Partial<ParticlesDoc>): ParticlesDoc => ({ ...componentDefaults.particles(), ...patch })
 const at = (position: Vec3, rotation: Vec3 = [0, 0, 0], scale: Vec3 = [1, 1, 1]) => ({ position, rotation, scale })
 
 function prefab(name: string, root: Partial<EntityDoc>, children: ((rootId: string) => EntityDoc)[] = []): PrefabDoc {
@@ -126,8 +128,28 @@ export function sampleProject(): ProjectDoc {
     scripts: [
       { script: 'builtin:Rotate', params: { x: 0, y: 0, z: 180 } },
       { script: 'builtin:Bob', params: {} },
-      { script: 'builtin:Collectible', params: {} },
+      { script: 'builtin:Collectible', params: { effect: 'Sparkle' } },
     ],
+  })
+  // One-shot burst spawned by Collectible; it removes itself when the last spark fades.
+  const sparkle = prefab('Sparkle', {
+    particles: particles({
+      rate: 0,
+      burst: 40,
+      lifetime: 0.7,
+      randomness: 0.5,
+      shape: 'sphere',
+      radius: 0.3,
+      speed: 5,
+      spread: 180,
+      gravity: 9,
+      drag: 2,
+      startSize: 0.32,
+      endSize: 0.06,
+      startColor: '#ffe680',
+      endColor: '#ff8a00',
+      destroyWhenDone: true,
+    }),
   })
   const crate = prefab('Crate', {
     transform: at([0, 0.5, 0]),
@@ -147,8 +169,28 @@ export function sampleProject(): ProjectDoc {
     mesh: mesh({ shape: 'torus', color: '#7a5cff', emissive: '#5a3cff', emissiveIntensity: 1.5, roughness: 0.3 }),
     collider: { ...componentDefaults.collider(), shape: 'sphere', radius: 0.45, trigger: true },
     scripts: [{ script: portalScript.id, params: {} }],
-  })
-  const prefabs = [player, camera, coin, crate, ball, portal]
+  }, [
+    (root) =>
+      createEntity('Portal Glow', {
+        parent: root,
+        transform: at([0, -0.4, 0]),
+        particles: particles({
+          rate: 35,
+          lifetime: 1.6,
+          shape: 'sphere',
+          radius: 0.35,
+          speed: 0.6,
+          spread: 180,
+          gravity: -1.2,
+          drag: 0.5,
+          startSize: 0.16,
+          endSize: 0.02,
+          startColor: '#9a7bff',
+          endColor: '#3a1cff',
+        }),
+      }),
+  ])
+  const prefabs = [player, camera, coin, sparkle, crate, ball, portal]
   const instance = (p: PrefabDoc, position: Vec3, parent: string | null = null, extra: Partial<EntityDoc> = {}) => {
     const e = instantiatePrefab(p, { parent, ...extra })
     e.transform.position = position

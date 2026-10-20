@@ -3,6 +3,7 @@ import type { Engine, Entity, Input, RigidBodyData, Time } from '../engine'
 import { damp, dampAngle, moveTowards, teleport } from '../engine'
 import type { ParamValue, ProjectDoc } from './document'
 import type { AnimationApi } from './runtime/animator'
+import type { ParticlesApi } from './runtime/particles'
 import type { UiApi } from './runtime/gameUi'
 
 /** A live entity as seen from scripts. */
@@ -79,6 +80,8 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly audio: AudioSourceApi | undefined
   /** Present when the entity has a Model; controls its glTF animation clips. */
   readonly animation: AnimationApi | undefined
+  /** Present when the entity has a Particle Emitter. */
+  readonly particles: ParticlesApi | undefined
   /** Name of the running scene. */
   readonly sceneName: string
   find(name: string): Handle | undefined
@@ -301,8 +304,9 @@ const FollowCamera: Behavior = {
 
 const Collectible: Behavior = {
   name: 'Collectible',
-  description: 'Disappears when the target touches it and counts toward a HUD counter. Needs a trigger collider.',
-  params: { collector: 'Player', counter: 'Coins', winMessage: 'All collected!', sound: '' },
+  description:
+    'Disappears when the target touches it and counts toward a HUD counter. Needs a trigger collider. Effect: a prefab spawned where it was collected.',
+  params: { collector: 'Player', counter: 'Coins', winMessage: 'All collected!', sound: '', effect: '' },
   start(ctx) {
     const p = ctx.params as { counter: string }
     const g = ctx.globals as Record<string, number>
@@ -311,7 +315,7 @@ const Collectible: Behavior = {
     ctx.hud.set(p.counter, `${g[`${p.counter}:got`]} / ${g[`${p.counter}:total`]}`)
   },
   onCollisionEnter(ctx, other) {
-    const p = ctx.params as { collector: string; counter: string; winMessage: string; sound: string }
+    const p = ctx.params as { collector: string; counter: string; winMessage: string; sound: string; effect: string }
     if (other.name !== p.collector) return
     const g = ctx.globals as Record<string, number>
     const got = ++g[`${p.counter}:got`]
@@ -324,6 +328,7 @@ const Collectible: Behavior = {
       ctx.sound.tone(988, 0.07, { type: 'square', volume: 0.12 })
       ctx.sound.tone(1319, 0.2, { type: 'square', volume: 0.12, delay: 0.07 })
     }
+    if (p.effect) ctx.spawn(p.effect, { position: ctx.object.getWorldPosition(v1) })
     ctx.destroy()
   },
 }

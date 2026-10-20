@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   cloneSubtree,
+  componentDefaults,
   createEntity,
   depthFirst,
   type EntityDoc,
@@ -81,6 +82,15 @@ describe('document', () => {
     const prefab: PrefabDoc = { id: 'loop', name: 'Loop', entities: [root] }
     prefab.entities.push(createEntity('Inner', { parent: root.id, prefab: 'loop' }))
     expect(expandEntities([instantiatePrefab(prefab)], [prefab]).length).toBeLessThan(20)
+  })
+
+  it('fills particle settings added after a file was saved', () => {
+    const doc = sampleProject()
+    const emitter = createEntity('Sparks', { particles: { rate: 5 } as never })
+    doc.scenes[0].entities.push(emitter)
+    const loaded = parseProject(JSON.parse(JSON.stringify(doc))).scenes[0].entities.find((e) => e.id === emitter.id)!
+    expect(loaded.particles?.rate).toBe(5)
+    expect(loaded.particles?.maxParticles).toBe(componentDefaults.particles().maxParticles)
   })
 
   it('rejects files that are not projects', () => {

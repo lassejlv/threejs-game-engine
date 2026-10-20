@@ -34,6 +34,7 @@ import { createStore, type Engine } from '../../engine'
 import { log } from '../console'
 import type { EntityDoc, Primitive } from '../document'
 import { Animator } from './animator'
+import { ParticleEmitter } from './particles'
 
 /** Animation clip names per model asset, filled as models load (for the inspector's clip picker). */
 export const modelClips = createStore<Record<string, string[]>>({})
@@ -66,7 +67,7 @@ function primitive(shape: Primitive): BufferGeometry {
 
 const proxyGeometry = new OctahedronGeometry(0.25)
 const arrowGeometry = new BufferGeometry().setAttribute('position', new Float32BufferAttribute([0, 0, 0, 0, 0, -1.5], 3))
-const proxyColors = { light: 0xffd25a, camera: 0x7fd1ff, audio: 0xff8fb4, empty: 0xb0b8c8 }
+const proxyColors = { light: 0xffd25a, camera: 0x7fd1ff, audio: 0xff8fb4, particles: 0xffa53a, empty: 0xb0b8c8 }
 
 export function isShared(geometry: BufferGeometry): boolean {
   return geometry === proxyGeometry || geometry === arrowGeometry || [...primitives.values()].includes(geometry)
@@ -88,6 +89,8 @@ export class NodeFactory {
 
   /** Play mode: every model animator, updated by the play scene each frame. */
   readonly animators = new Set<Animator>()
+  /** Every particle emitter; `updateParticles` steps them and drops disposed ones. */
+  readonly emitters = new Set<ParticleEmitter>()
 
   createNode(entity: EntityDoc): Group {
     const node = new Group()
@@ -124,6 +127,7 @@ export class NodeFactory {
     node.add(visual)
     node.userData.camera = undefined
     node.userData.animator = undefined
+    node.userData.particles = undefined
 
     if (entity.mesh) {
       const m = entity.mesh
@@ -186,6 +190,16 @@ export class NodeFactory {
 
     if (entity.audio?.asset && this.listener) this.createAudio(node, visual, entity)
 
+    if (entity.particles) {
+      const emitter = new ParticleEmitter(entity.particles, { preview: this.editorMode })
+      visual.add(emitter.object)
+      visual.userData.particles = emitter
+      node.userData.particles = emitter
+      this.emitters.add(emitter)
+      this.loadParticleTexture(emitter, entity.particles.texture)
+      if (this.editorMode || entity.particles.playOnStart) emitter.play()
+    }
+
     if (entity.camera && !this.editorMode) {
       const camera = new PerspectiveCamera(entity.camera.fov, 1, entity.camera.near, entity.camera.far)
       node.userData.camera = camera
@@ -195,10 +209,48 @@ export class NodeFactory {
     if (this.editorMode) this.addProxy(visual, entity)
   }
 
+  /**
+   * Edit mode: applies new emitter settings without restarting the effect, so
+   * dragging a field doesn't reset the preview. False if there is no emitter to update.
+   */
+  reconfigureParticles(node: Group, entity: EntityDoc): boolean {
+    const emitter = node.userData.particles as ParticleEmitter | undefined
+    if (!emitter || !entity.particles) return false
+    const textureChanged = emitter.config.texture !== entity.particles.texture
+    emitter.configure(entity.particles)
+    if (textureChanged) this.loadParticleTexture(emitter, entity.particles.texture)
+    return true
+  }
+
+  /** Steps every live emitter. Run once per frame. */
+  updateParticles(dt: number): void {
+    for (const emitter of this.emitters) {
+      const parent = emitter.object.parent
+      let root: Object3D = emitter.object
+      while (root.parent) root = root.parent
+      // Disposed, or its entity was destroyed (play mode removes the node from the scene).
+      if (emitter.disposed || !parent || root !== this.engine.scene) {
+        this.emitters.delete(emitter)
+        continue
+      }
+      parent.updateWorldMatrix(true, false)
+      emitter.update(dt, parent.matrixWorld)
+    }
+  }
+
+  private loadParticleTexture(emitter: ParticleEmitter, id: string | null): void {
+    emitter.setTexture(null)
+    const url = id && this.library.url(id)
+    if (!url) return
+    void this.engine.assets.texture(url).then((texture) => {
+      if (!emitter.disposed && emitter.config.texture === id) emitter.setTexture(texture)
+    })
+  }
+
   /** Small pickable gizmos for things that are otherwise invisible. */
   private addProxy(visual: Group, entity: EntityDoc): void {
     if (entity.mesh || entity.model) return
-    const kind = entity.light ? 'light' : entity.camera ? 'camera' : entity.audio ? 'audio' : 'empty'
+    const kind = entity.light ? 'light' : entity.camera ? 'camera' : entity.audio ? 'audio' : entity.particles ? 'particles' : 'empty'
     const material = new MeshBasicMaterial({ color: proxyColors[kind], wireframe: true, fog: false })
     const proxy = new Mesh(proxyGeometry, material)
     proxy.userData.editorOnly = true
@@ -287,6 +339,7 @@ function configureShadow(light: DirectionalLight | PointLight | SpotLight, enabl
 /** Disposes per-entity GPU resources (materials, light shadows), keeping shared geometry. */
 export function disposeVisual(visual: Object3D): void {
   ;(visual.userData.animator as Animator | undefined)?.dispose()
+  ;(visual.userData.particles as ParticleEmitter | undefined)?.dispose()
   visual.traverse((o) => {
     if (o.userData.fromAsset) return
     const mesh = o as Mesh

@@ -93,6 +93,20 @@ declare module 'engine' {
     readonly current: string | null
   }
 
+  interface Particles {
+    /** Restarts the emitter: fires its burst and emits for its duration. */
+    play(): void
+    /** Stops emitting; live particles finish their lifetime. */
+    stop(): void
+    /** Emits count particles at once (default: the emitter's burst count). */
+    burst(count?: number): void
+    /** Removes every live particle. */
+    clear(): void
+    readonly emitting: boolean
+    /** Live particles. */
+    readonly count: number
+  }
+
   interface Context<P = Record<string, any>> extends Handle {
     /** Inspector-editable values declared in params. */
     readonly params: P
@@ -108,6 +122,8 @@ declare module 'engine' {
     readonly sound: Sound
     readonly audio: AudioSource | undefined
     readonly animation: Animation | undefined
+    /** Present when the entity has a Particle Emitter. */
+    readonly particles: Particles | undefined
     readonly sceneName: string
     readonly engine: any
     find(name: string): Handle | undefined

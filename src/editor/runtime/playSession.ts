@@ -2,6 +2,7 @@ import { Audio, type AudioListener, Object3D, PositionalAudio } from 'three'
 import { defineComponent, type Engine, type Entity, type RapierPhysics, type System } from '../../engine'
 import { log } from '../console'
 import type { Animator } from './animator'
+import type { ParticleEmitter } from './particles'
 import { GameUi } from './gameUi'
 import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
 import {
@@ -232,6 +233,7 @@ export class PlaySession {
       sound: this.sound,
       audio: audioApi(handle.object.userData.audio as Audio | undefined),
       animation: handle.object.userData.animator as Animator | undefined,
+      particles: handle.object.userData.particles as ParticleEmitter | undefined,
       get sceneName() {
         return session.runtime.sceneName
       },
@@ -310,7 +312,8 @@ export class PlaySession {
     }
   }
 
-  private destroy(entity: Entity): void {
+  /** Destroys the entity and its children, running their scripts' onDestroy. */
+  destroy(entity: Entity): void {
     const { world } = this.engine
     if (!world.isAlive(entity)) return
     for (const child of this.children.get(entity) ?? []) this.destroy(child)

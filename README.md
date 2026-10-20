@@ -6,7 +6,7 @@ It is built with TypeScript, React 19, Vite 8, three.js r186 and Rapier physics.
 ```bash
 npm install
 npm run dev        # opens the editor at http://localhost:5173 (builds the game player first)
-npm test           # unit tests (ECS, physics, Rapier, document, scripting)
+npm test           # unit tests (ECS, physics, Rapier, document, scripting, particles)
 npm run build      # typecheck + production build of the editor
 ```
 
@@ -35,6 +35,7 @@ The project autosaves to localStorage. Assets (.glb models, .png/.jpg/.webp text
 - Light: directional, point, spot or hemisphere, with shadows
 - Camera: the *main* camera is used in play mode
 - Audio Source: 2D or 3D, loop, play on start
+- Particle Emitter: rate, burst and duration, point/sphere/box shapes, spread, gravity, drag, size, color and opacity over life, additive or normal blending, optional texture, world or local space. The Scene view previews it live, and **Auto destroy** turns it into a one-shot effect you can `spawn`
 - Rigid Body: dynamic, kinematic or character
 - Collider: box, sphere, capsule or cylinder, rotated with the entity, trigger option
 - Scripts
@@ -76,8 +77,9 @@ export default {
 | `ui.text / button / bar / label`, `hud.set / message` | in-game UI (DOM overlay) |
 | `sound.play(asset)`, `sound.tone(freq)`, `audio.play()` | one-shot sounds, a built-in synth, the entity's Audio Source |
 | `animation.play(clip, { fade, loop, speed })` | glTF animation |
+| `particles.play() / stop() / burst(n) / clear()` | the entity's Particle Emitter |
 
-Built-in scripts: `PlayerController`, `FollowCamera`, `Collectible`, `Rotate`, `Bob`, `DestroyBelow`.
+Built-in scripts: `PlayerController`, `FollowCamera`, `Collectible`, `Rotate`, `Bob`, `DestroyBelow`. `Collectible` can spawn an effect prefab where it was picked up (Coin Rush uses a `Sparkle` burst).
 
 ### Exporting a game
 
@@ -97,7 +99,7 @@ src/editor/
   scripting.ts   script API, compiler, built-in scripts
   scriptTypes.ts type declarations shown in Monaco
   runtime/       turns documents into running worlds: edit view, play session,
-                 game UI, audio, animators, collider outlines
+                 game UI, audio, animators, particles, collider outlines
   ui/            the editor's React panels
 src/player/      standalone player for exported games (no React, no editor)
 ```

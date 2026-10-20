@@ -19,6 +19,7 @@ import {
 import { log } from '../console'
 import { type ColliderDoc, depthFirst, type EntityDoc, expandEntities, instantiatePrefab, type ProjectDoc } from '../document'
 import { type AssetResolver, NodeFactory } from './nodes'
+import type { ParticleEmitter } from './particles'
 import { PlaySession } from './playSession'
 import { applySettings } from './settings'
 
@@ -105,6 +106,8 @@ export class PlayBuilder {
       const parentEntity = e.parent ? (ids.get(e.parent) ?? null) : (parent?.entity ?? null)
       this.session.register(handle, parentEntity)
       this.session.attachScripts(handle, e)
+      const emitter = node.userData.particles as ParticleEmitter | undefined
+      if (emitter && e.particles?.destroyWhenDone) emitter.onFinished = () => this.session.destroy(entity)
     }
     return { ids, mainCamera }
   }
@@ -182,6 +185,7 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
           }
         },
       })
+      engine.addSystem({ name: 'particles', phase: 'late', order: 100, run: (_engine, dt) => factory.updateParticles(dt) })
       options.onStart?.(engine)
     },
   })
