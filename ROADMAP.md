@@ -122,17 +122,17 @@ projects/
 - A deliberately broken script shows the error screen in an exported game.
 - Load-time and frame-time budgets are documented and enforced in CI.
 
-### Phase 3: clear trust boundaries
+### Phase 3: clear trust boundaries ✅
 
 **Outcome:** opening someone else's project can't silently run code with access to your other projects, and the supply chain is checked.
 
 **Why now:** Phase 1 makes sharing projects easy, which makes running untrusted scripts the main security risk. Scripts run via `new Function` in the editor's origin, so they can read every project and asset that origin stores.
 
 **Scope**
-- [ ] Ask for trust before running scripts from an imported project ("This project contains N scripts. Run them?"), and remember the answer per project.
-- [ ] Decide on and prototype isolation for play mode: running play in a sandboxed iframe on a separate origin is the robust fix. It is a large change, see Open questions.
-- [ ] Run `npm audit` in CI and fail on moderate or higher. Today it reports 2 low-severity issues through `monaco-editor`.
-- [ ] Document what exported games can access, and the security model for scripts.
+- [x] Ask for trust before running scripts from an imported project ("This project contains N scripts. Run them?"), and remember the answer per project.
+- [x] Decide on and prototype isolation for play mode: running play in a sandboxed iframe on a separate origin is the robust fix. It is a large change, see Open questions.
+- [x] Run `npm audit` in CI and fail on moderate or higher. Today it reports 2 low-severity issues through `monaco-editor`.
+- [x] Document what exported games can access, and the security model for scripts.
 
 **Dependencies**
 - Phase 1 (per-project storage and import flow).
@@ -142,17 +142,17 @@ projects/
 - The isolation decision is recorded in the README.
 - The CI audit step is green.
 
-### Phase 4: maintainable code and stable script API
+### Phase 4: maintainable code and stable script API ✅
 
 **Outcome:** contributors can change the editor safely, and the script API can't drift from its documentation.
 
 **Why now:** the riskiest code is the least tested. `src/editor/ui/` has no tests, and the largest files are `Inspector.tsx` (1,285 lines), `document.ts` (1,039) and `editor.ts` (796). The Monaco typings in `scriptTypes.ts` are a hand-written twin of the types in `scripting.ts`.
 
 **Scope**
-- [ ] Split `Inspector.tsx` into one module per component section and `document.ts` into types, defaults, prefabs and parsing, with no behavior changes.
-- [ ] Add component tests for the Inspector: single edit, multi-edit, prefab overrides, undo labels.
-- [ ] Type-check every built-in and template script against `scriptTypes.ts` in CI, so the typings and the runtime can't drift apart.
-- [ ] Mark the script API stable, and decide which `ctx` members are public and versioned.
+- [x] Split `Inspector.tsx` into one module per component section and `document.ts` into types, defaults, prefabs and parsing, with no behavior changes.
+- [x] Add component tests for the Inspector: single edit, multi-edit, prefab overrides, undo labels.
+- [x] Type-check every built-in and template script against `scriptTypes.ts` in CI, so the typings and the runtime can't drift apart.
+- [x] Mark the script API stable, and decide which `ctx` members are public and versioned.
 
 **Dependencies**
 - Phase 1 changes `document.ts`, so split it after that, not before.
@@ -169,24 +169,24 @@ projects/
 **Why now:** this comes last because it packages the guarantees from Phases 1–4. Today there is no `LICENSE`, no `CHANGELOG`, no git tags, the package is `private: true` at `0.1.0`, and the README is the only documentation.
 
 **Scope**
-- [ ] Choose and add a license (this decision should come early, see Good ideas → Now).
-- [ ] Adopt semantic versioning, a `CHANGELOG.md` and tagged releases. Promise that a v1 project opens in every later 1.x release (enforced by the Phase 1 fixtures).
-- [ ] Publish a script API reference generated from `scriptTypes.ts`, plus a short tutorial per template.
-- [ ] Host the editor publicly (see Open questions) and link it from the README.
-- [ ] Fix the README's known limits that users hit most: prefab overrides that add or remove components, joints added during play, and moving obstacles for navigation.
+- [x] Choose and add a license (this decision should come early, see Good ideas → Now).
+- [x] Adopt semantic versioning, a `CHANGELOG.md` and tagged releases. Promise that a v1 project opens in every later 1.x release (enforced by the Phase 1 fixtures).
+- [x] Publish a script API reference generated from `scriptTypes.ts`, plus a short tutorial per template.
+- [x] ~~Host the editor publicly~~: not now (see Decisions made). The docs live in `docs/` in the repository instead of a docs site.
+- [x] Fix the README's known limits that users hit most: prefab overrides that add or remove components, joints added during play, and moving obstacles for navigation.
 
 **Dependencies**
 - Phases 1–4, and a license decision.
 
 **Exit criteria**
-- A `v1.0.0` tag with a changelog, a license file, a docs site, and a public editor URL.
+- A `v1.0.0` tag with a changelog, a license file and the docs in `docs/` (no public editor URL while the project is local-first).
 
 ## Good ideas
 
 ### Now
-- **Add a LICENSE:** without one, nobody else can legally use or contribute to the engine. Small effort, but it's your decision (see Open questions).
-- **Autosave failure banner:** a cheap first step ahead of the full IndexedDB move, since failures currently only go to the Console tab. Small.
-- **CI artifact of an exported game:** upload the exported Coin Rush `.html` from CI so every commit has a playable build to try. Small.
+- ✅ **Add a LICENSE:** MIT.
+- ✅ **Autosave failure banner:** shipped with Phase 1.
+- ✅ **CI artifact of an exported game:** the Chromium browser-test job uploads `coin-rush.html` (and the export load times) with every run.
 
 ### Next
 - **Asset import pipeline:** compress textures and models on import instead of only on export (`src/editor/compressAssets.ts` already does meshopt and WebP). Projects and autosaves stay smaller. Medium.
@@ -224,13 +224,18 @@ projects/
 - **File server:** `npm run dev` starts it automatically when Bun is installed. Projects live in `projects/` inside the checkout (git-ignored), or wherever `GE_PROJECTS_DIR` points.
 - **Run in new tab** stays a blob URL; serving built games from disk adds nothing while everything is local.
 - **Multiplayer and cloud save:** out of scope.
+- **Play-mode isolation:** no separate origin while the editor is local and single-user; the trust prompt covers opening someone else's project (README, Security model).
+- **Script API stability:** everything in `docs/script-api.md` is public and follows semver from 1.0; `ctx.engine` and anything unlisted is internal.
+- **Rapier stays inlined:** exported games keep their single-file, offline-capable form. Measured load times (start screen ~0.3 s, first frames under 1 s with software rendering) don't justify lazy-loading physics.
+- **Prefab overrides** store added components whole and removed ones as `null`; patches for components the prefab doesn't have are still ignored, so older projects keep their meaning.
+- **Joints during play** come from scripts (`ctx.physics.connect` / `disconnect`) instead of a new component mode.
+- **Moving obstacles** are any dynamic or kinematic, non-trigger, non-character body. They make grid cells expensive rather than impassable, so an agent still heads for a gap that is only closed for a moment. Agents don't avoid each other.
 
 ## Open questions
 
-- Is play-mode sandboxing (separate origin) worth its cost, or is a trust prompt enough for the intended users?
-- Which browsers and devices must be supported at 1.0? For example, Safari on iOS and low-end Android.
-- Should a 1.x release promise only that projects keep opening, or also that the script API is stable?
+- Which browsers and devices must be supported beyond desktop Chromium, Firefox and WebKit? For example, Safari on iOS and low-end Android.
 - Is the engine meant to be used as an npm library outside the editor? That decides how much of `src/engine` becomes public API.
+- If the editor is ever hosted for other people, play mode should move to a sandboxed origin (answered "not now" for the local-first editor).
 
 ## Evidence reviewed
 

@@ -6,7 +6,7 @@
 //
 // Run with `npm run test:exports` (E2E_BROWSER=firefox|webkit for other browsers).
 
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { assert, BROWSER, budgets, collectErrors, countColors, describeGpu, failureShot, launch, logger, serveDir, startDevServer } from './harness.mjs'
@@ -176,6 +176,11 @@ async function main() {
     }
 
     site.close()
+    // Keep a playable Coin Rush build and the load times next to the screenshots (CI uploads test-results/).
+    const results = process.env.E2E_RESULTS_DIR ?? 'test-results'
+    mkdirSync(results, { recursive: true })
+    if (BROWSER === 'chromium') copyFileSync(join(out, 'coin-rush.html'), join(results, 'coin-rush.html'))
+    writeFileSync(join(results, `export-timings-${BROWSER}.json`), `${JSON.stringify(timings, null, 2)}\n`)
     const slowest = timings.reduce((a, b) => (b.firstFrameMs > a.firstFrameMs ? b : a))
     log(`slowest start: ${slowest.game} (${slowest.startScreenMs} + ${slowest.firstFrameMs} ms; budgets ${budgets.exportStartScreenMs} + ${budgets.exportFirstFrameMs})`)
     log('PASS')
