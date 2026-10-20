@@ -9,6 +9,7 @@ npm run dev        # opens the editor at http://localhost:5173 (builds the game 
 npm test           # unit tests (engine, physics, navigation, document, editor, scripting, runtime)
 npm run test:e2e   # browser smoke test: loads the editor, plays, collects a coin
 npm run build      # typecheck + production build of the editor
+npm run server     # multiplayer relay on ws://localhost:8787 (for ctx.net)
 ```
 
 CI (GitHub Actions) runs the typecheck, unit tests, build and the browser smoke test on every push and pull request.
@@ -16,7 +17,7 @@ CI (GitHub Actions) runs the typecheck, unit tests, build and the browser smoke 
 On first launch the editor opens **Coin Rush**, a sample project made only with editor features: prefabs and a prefab variant, two scenes linked by portals, joints, particles, a patrolling hazard, a checkpoint, an elevator, a pathfinding ghost, editor-made screen UI, built-in scripts and project scripts. Press ▶ (Ctrl/Cmd+P) to play it.
 In play mode: WASD moves, Space jumps, Shift sprints, E throws a ball, drag the mouse to look. On touch screens an on-screen joystick and buttons appear.
 
-**File → New from template…** starts from one of five projects: Coin Rush, **Sky Hopper** (a 2D platformer), **Arena** (top-down waves of enemies that path-find to you), **Kart Loop** (racing with laps and a saved best lap) and Empty.
+**File → New from template…** starts from one of six projects: Coin Rush, **Sky Hopper** (a 2D platformer), **Arena** (top-down waves of enemies that path-find to you), **Hangout** (multiplayer: walk around together and wave), **Kart Loop** (racing with laps and a saved best lap) and Empty.
 
 ## The editor
 
@@ -34,7 +35,7 @@ Panels can be resized by dragging their edges. Shortcuts: `W` `E` `R` pick the t
 
 The project autosaves to localStorage. Assets (.glb models, .png/.jpg/.webp textures, .mp3/.ogg/.wav audio) are stored in IndexedDB.
 
-**Project Settings** (File menu): project name, start scene, renderer and export options; input actions and axes (record keys by pressing them) and touch controls; and 16 named physics layers with a collision matrix.
+**Project Settings** (File menu): project name, start scene, renderer, multiplayer server and export options; input actions and axes (record keys by pressing them) and touch controls; and 16 named physics layers with a collision matrix.
 
 ### Scene settings
 
@@ -109,9 +110,10 @@ export default {
 | `sound.play(asset)`, `sound.tone(freq)`, `audio.play()`, `music.play(asset)`, `volume.set(group, v)` | one-shots, a built-in synth, the entity's Audio Source, cross-fading music, master/music/sfx volume |
 | `animation.play(clip or state)`, `animation.set(param, v)`, `animation.trigger(name)` | glTF animation and its state machine |
 | `particles.play() / stop() / burst(n) / clear()` | the entity's Particle Emitter |
+| `net.connect(room)`, `net.send(type, data)`, `net.on(type, fn)`, `net.setState(…)`, `net.players` | multiplayer through the relay server |
 | `sprite.frame / fps / flipX / color` | the entity's Sprite |
 
-Built-in scripts: `PlayerController`, `FollowCamera`, `PlayerController2D`, `FollowCamera2D`, `Collectible`, `Rotate`, `Bob`, `DestroyBelow`, `MovingPlatform`, `Patrol`, `Health`, `Hazard`, `Checkpoint`, `Door`, `Chase` and `Wander`. They read the default input names (Jump, Sprint, Fire, Interact, MoveX/Y, LookX/Y), so remapping keys in Project Settings works for them too.
+Built-in scripts: `PlayerController`, `FollowCamera`, `PlayerController2D`, `FollowCamera2D`, `Collectible`, `Rotate`, `Bob`, `DestroyBelow`, `MovingPlatform`, `Patrol`, `Health`, `Hazard`, `Checkpoint`, `Door`, `Chase`, `Wander` and `NetworkPlayer`. They read the default input names (Jump, Sprint, Fire, Interact, MoveX/Y, LookX/Y), so remapping keys in Project Settings works for them too.
 
 ### Exporting a game
 
@@ -124,6 +126,17 @@ The player is about 5.3 MB plus your assets (1.9 MB gzipped), and Rapier's WASM 
 ### 2D games
 
 Add a **2D Camera** (orthographic, from Create → 2D) and **Sprites**, and tick **2D** on rigid bodies so they stay in the XY plane. The 2D toggle above the Scene view switches to a flat side view. `PlayerController2D` and `FollowCamera2D` handle running, jumping and a camera that follows with look-ahead. Sky Hopper is a complete example.
+
+### Multiplayer
+
+Games talk through a small relay server (`server/relay.mjs`): players join a room, the server forwards their messages and remembers each player's synced state for whoever joins later. It runs no game logic; the player who has been in the room longest is the host, and `ctx.net.isHost` tells scripts who should run shared logic.
+
+- Run `npm run server`, then press Play in two browser tabs (the **Hangout** template is ready to go).
+- `NetworkPlayer` on your player does the common case with no code: it shares position and facing and shows everyone else in the same scene as a prefab with a name tag, smoothing between updates.
+- For anything else, use `ctx.net.send` / `on` for events and `setState` / `players[i].state` for values that change continuously.
+- For a published game, deploy `server/relay.mjs` anywhere that runs Node (it reads `PORT`) and put its `wss://` address in Project Settings. Pages served over https can only use `wss://`.
+
+Rooms are per project, so different games on one relay never meet. Up to 16 players per room.
 
 ### WebGPU
 
@@ -145,9 +158,10 @@ src/editor/
   exportGame.ts   single-file and web-app exports, asset stripping and compression
   runtime/        turns documents into running worlds: edit view, play session, environment and
                   post-processing, instancing, particles, animation, navigation, timers, audio mixer,
-                  game and scene UI, touch controls, fades, collider outlines and handles
+                  game and scene UI, touch controls, fades, multiplayer client, collider outlines and handles
   ui/             the editor's React panels
 src/player/       standalone player for exported games (no React, no editor); WebGL and WebGPU builds
+server/           the multiplayer relay (Node + ws)
 e2e/              browser smoke test
 ```
 
@@ -166,4 +180,5 @@ Performance:
 - Prefab overrides change fields of components a part already has; they can't add or remove components (use a variant and edit it).
 - LOD levels and blended animation states apply to static models and the model's own clips; LOD levels don't animate.
 - Navigation is a grid baked once per scene from static colliders; moving obstacles aren't avoided.
+- Multiplayer is a relay: there is no server-side game logic, so a modified client can cheat. Physics isn't synced; share what matters through state and messages.
 - Export compression doesn't recompress textures embedded inside .glb files.

@@ -297,6 +297,16 @@ function GeneralSettings() {
         WebGPU uses three.js node materials. Browsers without WebGPU fall back to WebGL 2 through the same renderer. The viewport switches
         renderer right away; the stats panel shows which backend is running.
       </p>
+      <Row label="Multiplayer server">
+        <TextInput
+          value={doc.settings.multiplayerServer}
+          onChange={(multiplayerServer) => updateProject({ settings: { ...doc.settings, multiplayerServer } }, { label: 'Multiplayer server' })}
+        />
+      </Row>
+      <p className="hint">
+        The relay that ctx.net and the NetworkPlayer script join. Run one locally with `npm run server`; deploy server/relay.mjs anywhere
+        that runs Node and use its wss:// address for published games.
+      </p>
       <CheckField
         label="Compress exports"
         value={doc.settings.exportCompress}

@@ -503,6 +503,8 @@ export interface ProjectSettings {
   exportCompress: boolean
   /** WebGPU draws through three's node-material renderer (WebGL 2 where WebGPU is missing). */
   renderer: 'webgl' | 'webgpu'
+  /** WebSocket URL of the multiplayer relay (server/relay.mjs) that `ctx.net` joins. */
+  multiplayerServer: string
 }
 
 export interface InputActionDoc {
@@ -552,6 +554,7 @@ export function defaultProjectSettings(): ProjectSettings {
     exportIncludeUnused: false,
     exportCompress: true,
     renderer: 'webgl',
+    multiplayerServer: 'ws://localhost:8787',
   }
 }
 

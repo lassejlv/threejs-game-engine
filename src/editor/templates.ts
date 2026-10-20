@@ -525,10 +525,99 @@ function racing(): ProjectDoc {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Multiplayer
+
+const WAVE_SCRIPT = `// Press E to wave at everyone in the room; shows who waved at you.
+/** @type {import('engine').Script} */
+export default {
+  start(ctx) {
+    ctx.net.on('wave', (data, from) => ctx.hud.message(\`\${from.name} waves!\`))
+    ctx.net.onJoin((player) => ctx.hud.message(\`\${player.name} joined\`))
+    ctx.net.onLeave((player) => ctx.hud.message(\`\${player.name} left\`))
+  },
+  update(ctx) {
+    ctx.globals.status = ctx.net.status === 'online' ? (ctx.net.isHost ? 'online · host' : 'online') : ctx.net.status
+    if (ctx.input.actionPressed('Fire') && ctx.net.status === 'online') {
+      ctx.net.send('wave')
+      ctx.hud.message('You wave')
+    }
+  },
+}
+`
+
+function multiplayer(): ProjectDoc {
+  const wave = script('Wave', WAVE_SCRIPT)
+  const remote = prefab('Remote Player', {
+    transform: at([0, 0, 0], [0, 0, 0], [0.8, 0.9, 0.8]),
+    mesh: mesh({ shape: 'capsule', color: '#e8833a', roughness: 0.5 }),
+  })
+  const colors = ['#4c8dff', '#9b6bff', '#3fc2a8', '#ffcd4c']
+  const entities: EntityDoc[] = [
+    createEntity('Camera', { camera: componentDefaults.camera(), scripts: [{ script: 'builtin:FollowCamera', params: {} }] }),
+    createEntity('Sun', {
+      transform: at([8, 20, 6], [-55, 35, 0]),
+      light: { ...componentDefaults.light(), type: 'directional', intensity: 2.4, castShadow: true, shadowArea: 50 },
+    }),
+    createEntity('Sky Light', { light: { ...componentDefaults.light(), type: 'hemisphere', color: '#dfe8ff', groundColor: '#55663f', intensity: 1 } }),
+    createEntity('Ground', {
+      transform: at([0, -0.5, 0], [0, 0, 0], [50, 1, 50]),
+      mesh: mesh({ color: '#6fae54', roughness: 0.95 }),
+      collider: componentDefaults.collider(),
+    }),
+  ]
+  // A ring of steps and platforms to climb together.
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2
+    const h = 0.5 + i * 0.45
+    entities.push(
+      createEntity(`Block ${i + 1}`, {
+        transform: at([Math.cos(a) * 9, h / 2, Math.sin(a) * 9], [0, 0, 0], [3, h, 3]),
+        mesh: mesh({ color: colors[i % colors.length], roughness: 0.6 }),
+        collider: componentDefaults.collider(),
+      }),
+    )
+  }
+  entities.push(
+    createEntity('Player', {
+      transform: at([0, 1, 4], [0, 0, 0], [0.8, 0.9, 0.8]),
+      mesh: mesh({ shape: 'capsule', color: '#4cd97b', roughness: 0.5 }),
+      rigidBody: { ...componentDefaults.rigidBody(), type: 'character' },
+      collider: { ...componentDefaults.collider(), shape: 'capsule', radius: 0.5, height: 2 },
+      scripts: [
+        { script: 'builtin:PlayerController', params: {} },
+        { script: 'builtin:NetworkPlayer', params: { room: 'lobby', remotePrefab: 'Remote Player' } },
+        { script: wave.id, params: {} },
+      ],
+    }),
+  )
+  return {
+    version: 2,
+    name: 'Hangout',
+    settings: defaultProjectSettings(),
+    scripts: [wave],
+    prefabs: [remote],
+    scenes: [
+      {
+        id: newId(),
+        name: 'Hangout',
+        settings: { ...defaultSettings(), sky: 'gradient', skyTop: '#4f8fe0', skyHorizon: '#cfe4ff', skyBottom: '#6d7f5a' },
+        entities,
+        ui: [
+          { ...createUiElement('text', 'Online'), anchor: 'top-left', text: 'Players online: {online}', size: 16 },
+          { ...createUiElement('text', 'Status'), anchor: 'top-right', text: '{status}', size: 13 },
+          { ...createUiElement('text', 'Controls'), anchor: 'bottom', text: 'WASD move · Space jump · E wave · open a second tab to see yourself', size: 13 },
+        ],
+      },
+    ],
+  }
+}
+
 export const TEMPLATES: Template[] = [
   { id: 'coin-rush', name: 'Coin Rush', description: '3D platformer: collect coins, prefabs and variants, portals between two scenes, joints, particles.', create: sampleProject },
   { id: 'platformer-2d', name: 'Sky Hopper', description: '2D platformer: sprites, an orthographic camera, planar physics, a lift, spikes and a goal flag.', view2D: true, create: platformer2D },
   { id: 'top-down', name: 'Arena', description: 'Top-down survival: shoot waves of enemies that find their way to you (pathfinding), score UI.', create: topDown },
+  { id: 'multiplayer', name: 'Hangout', description: 'Multiplayer: everyone in the room walks around together and can wave. Run `npm run server`, then play in two tabs.', create: multiplayer },
   { id: 'racing', name: 'Kart Loop', description: 'Racing: an arcade kart, a walled circuit, checkpoint gates, laps and a saved best lap.', create: racing },
   { id: 'empty', name: 'Empty', description: 'A camera, a light and the ground.', create: emptyProject },
 ]

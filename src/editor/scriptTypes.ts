@@ -143,6 +143,32 @@ declare module 'engine' {
     /** A random walkable point, optionally within radius of this entity. */
     randomPoint(radius?: number): T3.Vector3 | null
   }
+  interface NetPlayer {
+    readonly id: string
+    readonly name: string
+    /** What they last passed to setState. */
+    readonly state: Record<string, any>
+    readonly isHost: boolean
+    readonly isMe: boolean
+  }
+  interface Net {
+    /** Joins a room (default 'lobby') on the project's multiplayer server. Safe to call repeatedly. */
+    connect(room?: string, options?: { name?: string }): void
+    disconnect(): void
+    readonly status: 'offline' | 'connecting' | 'online' | 'error'
+    readonly id: string | null
+    /** The player in the room longest; use it to decide who runs shared logic. */
+    readonly isHost: boolean
+    /** Everyone in the room, you included. */
+    readonly players: NetPlayer[]
+    /** Sends JSON data to everyone else, or to one player id. */
+    send(type: string, data?: any, to?: string): void
+    on(type: string, fn: (data: any, from: NetPlayer) => void): () => void
+    onJoin(fn: (player: NetPlayer) => void): () => void
+    onLeave(fn: (player: NetPlayer) => void): () => void
+    /** Merges into your synced state; others read it from players[i].state. Sent at most 20 times a second. */
+    setState(patch: Record<string, any>): void
+  }
   type Ease = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'backOut' | 'bounceOut' | 'elasticOut'
   interface TweenOptions {
     ease?: Ease
@@ -174,6 +200,8 @@ declare module 'engine' {
     readonly sprite: { flipX: boolean; frame: number; fps: number; color: string } | undefined
     /** Pathfinding over the scene's static colliders. */
     readonly nav: Nav
+    /** Multiplayer through the relay server set in Project Settings (npm run server). */
+    readonly net: Net
     /** Background music that keeps playing (or cross-fades) across scenes. */
     readonly music: {
       play(asset: string, options?: { fade?: number; volume?: number; loop?: boolean }): void

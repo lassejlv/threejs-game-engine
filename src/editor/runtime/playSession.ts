@@ -6,6 +6,7 @@ import type { ParticleEmitter } from './particles'
 import type { SpriteRenderer } from './sprite'
 import { AudioMixer } from './audioMixer'
 import { Navigation } from './navigation'
+import { type NetApi, NetClient, type NetPlayer } from './network'
 import { drawUiElement, isLive } from './sceneUi'
 import { Timers } from './timers'
 import { GameUi } from './gameUi'
@@ -36,6 +37,14 @@ interface Instance {
 }
 
 const Scripts = defineComponent<Instance[]>('Scripts')
+
+/** Network events share the script event bus under a prefix scripts can't produce by accident. */
+const NET_PREFIX = '\u0001net:'
+
+interface NetMessage {
+  data: unknown
+  from: NetPlayer
+}
 
 /** Running sessions, so the editor can hot-reload scripts saved during play. */
 export const activeSessions = new Set<PlaySession>()
@@ -222,6 +231,7 @@ export class PlaySession {
       },
       { name: 'scripts.update', phase: 'update', run: run('update') },
       { name: 'scripts.timers', phase: 'update', order: 5, run: (_engine, dt) => this.timers.update(dt) },
+      { name: 'net', phase: 'update', order: -10, run: () => this.pumpNetwork() },
       { name: 'nav.agents', phase: 'fixed', order: -40, run: (_engine, dt) => this.navigation.update(dt) },
       { name: 'scripts.lateUpdate', phase: 'late', run: run('lateUpdate') },
       {
@@ -325,6 +335,7 @@ export class PlaySession {
       particles: handle.object.userData.particles as ParticleEmitter | undefined,
       sprite: handle.object.userData.sprite as SpriteRenderer | undefined,
       nav: this.navigation.api(handle),
+      net: this.netApi(handle),
       music: {
         play: (asset, options) => {
           const id = this.assets.byName(asset)
@@ -382,6 +393,45 @@ export class PlaySession {
       log: (...args) => log('log', prefix, ...args),
       warn: (...args) => log('warn', prefix, ...args),
       error: (...args) => log('error', prefix, ...args),
+    }
+  }
+
+  private netApi(handle: Handle): NetApi {
+    const client = () => NetClient.for(this.engine)
+    const { settings, name: project } = this.doc
+    return {
+      connect: (room = 'lobby', options = {}) =>
+        // Rooms are per project, so two games on one relay never meet.
+        client().connect(settings.multiplayerServer, `${project}/${room}`, options.name ?? ''),
+      disconnect: () => client().disconnect(),
+      get status() {
+        return client().status
+      },
+      get id() {
+        return client().id
+      },
+      get isHost() {
+        return client().isHost
+      },
+      get players() {
+        return client().players
+      },
+      send: (type, data, to) => client().send(type, data, to),
+      on: (type, fn) => this.listen(handle.entity, NET_PREFIX + type, (e) => fn((e as NetMessage).data, (e as NetMessage).from)),
+      onJoin: (fn) => this.listen(handle.entity, `${NET_PREFIX}@join`, (p) => fn(p as NetPlayer)),
+      onLeave: (fn) => this.listen(handle.entity, `${NET_PREFIX}@leave`, (p) => fn(p as NetPlayer)),
+      setState: (patch) => client().setState(patch),
+    }
+  }
+
+  /** Sends throttled state and hands queued network events to listeners. */
+  private pumpNetwork(): void {
+    const client = NetClient.peek(this.engine)
+    if (!client) return
+    client.flush(performance.now())
+    for (const event of client.take()) {
+      if (event.kind === 'message') this.emit(NET_PREFIX + event.type, { data: event.data, from: event.from })
+      else this.emit(`${NET_PREFIX}@${event.kind}`, event.player)
     }
   }
 

@@ -34,6 +34,7 @@ import { ColliderOutlines } from './colliderOutlines'
 import { editorCamera, getOrbit } from './editorCamera'
 import { disposeVisual, NodeFactory } from './nodes'
 import { AudioMixer } from './audioMixer'
+import { NetClient } from './network'
 import { Fader } from './fader'
 import { SceneEnvironment } from './environment'
 import { TerrainBrush } from './terrainBrush'
@@ -125,8 +126,9 @@ export function createEditScene(): GameScene {
       const root = new Group()
       scene.add(root)
       const factory = new NodeFactory(engine, assetLibrary, true)
-      // Leaving play mode silences any music the game started.
+      // Leaving play mode silences any music the game started and leaves its multiplayer room.
       AudioMixer.stopAllFor(engine)
+      NetClient.closeFor(engine)
       Fader.for(engine.container).reset()
       const environment = new SceneEnvironment(engine, assetLibrary)
       cleanups.push(() => environment.dispose())

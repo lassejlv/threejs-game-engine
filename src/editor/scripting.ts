@@ -5,6 +5,7 @@ import type { ParamValue, ProjectDoc } from './document'
 import type { AnimationApi } from './runtime/animator'
 import type { MusicApi, VolumeApi } from './runtime/audioMixer'
 import type { NavApi } from './runtime/navigation'
+import type { NetApi } from './runtime/network'
 import type { ParticlesApi } from './runtime/particles'
 import type { SpriteApi } from './runtime/sprite'
 import type { TimerHandle, TweenOptions } from './runtime/timers'
@@ -109,6 +110,8 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly sprite: SpriteApi | undefined
   /** Pathfinding over the scene's static geometry. */
   readonly nav: NavApi
+  /** Multiplayer: rooms, messages and synced player state through the project's relay server. */
+  readonly net: NetApi
   /** Background music that carries across scenes. */
   readonly music: MusicApi
   /** Master, music and sound-effect volume (0..1), remembered for the player. */
@@ -678,6 +681,75 @@ const FollowCamera2D: Behavior = {
   },
 }
 
+const q1 = new THREE.Quaternion()
+
+interface RemotePlayer {
+  handle: Handle
+  position: THREE.Vector3
+  rotation: THREE.Quaternion
+}
+
+const NetworkPlayer: Behavior = {
+  name: 'NetworkPlayer',
+  description:
+    "Joins a multiplayer room, shares this entity's position and facing, and shows every other player in the same scene as an instance of a prefab with their name above it. Sets globals.online to the player count. Put it on your player.",
+  params: { room: 'lobby', remotePrefab: 'Remote Player', playerName: '', smoothing: 12 },
+  start(ctx) {
+    const p = ctx.params as { room: string; playerName: string }
+    ctx.net.connect(p.room, p.playerName ? { name: p.playerName } : {})
+    ctx.state.remotes = new Map<string, RemotePlayer>()
+  },
+  update(ctx, dt) {
+    const p = ctx.params as { remotePrefab: string; smoothing: number }
+    const remotes = ctx.state.remotes as Map<string, RemotePlayer>
+
+    // Share where we are, only when it changed (state is sent at most 20 times a second).
+    ctx.object.getWorldPosition(v1)
+    ctx.object.getWorldQuaternion(q1)
+    const pos = [v1.x, v1.y, v1.z].map((n) => Math.round(n * 100) / 100)
+    const rot = [q1.x, q1.y, q1.z, q1.w].map((n) => Math.round(n * 1000) / 1000)
+    const sent = JSON.stringify([ctx.sceneName, pos, rot])
+    if (sent !== ctx.state.sent) {
+      ctx.state.sent = sent
+      ctx.net.setState({ scene: ctx.sceneName, p: pos, q: rot })
+    }
+
+    const players = ctx.net.players
+    ctx.globals.online = ctx.net.status === 'online' ? players.length : 0
+    const seen = new Set<string>()
+    for (const player of players) {
+      const s = player.state as { scene?: string; p?: number[]; q?: number[] }
+      if (player.isMe || s.scene !== ctx.sceneName || !s.p || !s.q) continue
+      seen.add(player.id)
+      let remote = remotes.get(player.id)
+      if (!remote) {
+        const handle = ctx.spawn(p.remotePrefab, { position: { x: s.p[0], y: s.p[1], z: s.p[2] } })
+        if (!handle) {
+          if (!ctx.state.warned) ctx.warn(`NetworkPlayer: no prefab named "${p.remotePrefab}"`)
+          ctx.state.warned = true
+          continue
+        }
+        handle.object.quaternion.set(s.q[0], s.q[1], s.q[2], s.q[3])
+        remote = { handle, position: new THREE.Vector3(), rotation: new THREE.Quaternion() }
+        remotes.set(player.id, remote)
+      }
+      remote.position.set(s.p[0], s.p[1], s.p[2])
+      remote.rotation.set(s.q[0], s.q[1], s.q[2], s.q[3])
+      // Ease toward the latest state, which arrives in steps.
+      const k = 1 - Math.exp(-p.smoothing * dt)
+      remote.handle.object.position.lerp(remote.position, k)
+      remote.handle.object.quaternion.slerp(remote.rotation, k)
+      ctx.ui.label(`net-${player.id}`, player.name, remote.handle)
+    }
+    for (const [id, remote] of remotes) {
+      if (seen.has(id)) continue
+      ctx.destroy(remote.handle)
+      ctx.ui.remove(`net-${id}`)
+      remotes.delete(id)
+    }
+  },
+}
+
 export const BUILTINS: Record<string, Behavior> = Object.fromEntries(
   [
     Rotate,
@@ -696,6 +768,7 @@ export const BUILTINS: Record<string, Behavior> = Object.fromEntries(
     Door,
     Chase,
     Wander,
+    NetworkPlayer,
   ].map(
     (b) => [`builtin:${b.name}`, b],
   ),
