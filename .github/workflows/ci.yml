@@ -21,6 +21,8 @@ jobs:
           cache: npm
       - uses: oven-sh/setup-bun@v2
       - run: npm ci
+      - name: Dependency audit
+        run: npm audit --audit-level=moderate
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:server
@@ -29,27 +31,36 @@ jobs:
         run: node scripts/check-budgets.mjs
 
   e2e:
-    name: Browser smoke test
+    name: Browser tests (${{ matrix.browser }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    # Firefox and WebKit run without blocking until they have been green for a while.
+    continue-on-error: ${{ matrix.browser != 'chromium' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    env:
+      E2E_BROWSER: ${{ matrix.browser }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      # With Bun the dev server starts the file server, so the smoke test saves projects to disk.
+      # With Bun the dev server starts the file server, so the tests save projects to disk.
       - uses: oven-sh/setup-bun@v2
       - run: npm ci
-      - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
-        env:
-          E2E_SCREENSHOT: test-results/e2e.png
-      - name: Upload screenshot
+      - name: Install ${{ matrix.browser }} for Playwright
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      - name: Smoke test (editor, play, context loss, draw-call budget)
+        run: npm run test:e2e
+      - name: Export test (every template exported and played)
+        run: npm run test:exports
+      - name: Upload screenshots and exported games
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-screenshot
+          name: e2e-${{ matrix.browser }}
           path: test-results/
           if-no-files-found: ignore

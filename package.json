@@ -16,7 +16,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p server",
     "test": "vitest run",
     "test:server": "bun test ./server",
-    "test:e2e": "node e2e/smoke.mjs"
+    "test:e2e": "node e2e/smoke.mjs",
+    "test:exports": "node e2e/exports.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
