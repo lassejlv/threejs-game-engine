@@ -1,15 +1,19 @@
 import {
   BasicShadowMap,
+  type Camera,
   CanvasTexture,
   EquirectangularReflectionMapping,
   type Light,
   type LightShadow,
   type Material,
   type Mesh,
+  type OrthographicCamera,
   PCFShadowMap,
   PMREMGenerator,
+  type Scene,
   SRGBColorSpace,
   type Texture,
+  UVMapping,
   type WebGLRenderTarget,
 } from 'three'
 import { type Engine, postEnabled } from '../../engine'
@@ -36,6 +40,8 @@ export class SceneEnvironment {
   private skyKey = ''
   private shadowKey = ''
   private sky: Texture | null = null
+  /** The sky drawn flat across the screen, for orthographic cameras (an equirect sky needs perspective). */
+  private flatSky: Texture | null = null
   private envTarget: WebGLRenderTarget | null = null
   private post: PostProcessing | null = null
   private postLoading = false
@@ -45,7 +51,14 @@ export class SceneEnvironment {
   constructor(
     private readonly engine: Engine,
     private readonly assets: AssetResolver,
-  ) {}
+  ) {
+    engine.scene.onBeforeRender = this.swapSky
+  }
+
+  private readonly swapSky = (_renderer: unknown, scene: Scene, camera: Camera): void => {
+    if (this.sky && scene.background === this.sky && (camera as OrthographicCamera).isOrthographicCamera) scene.background = this.flatSky
+    else if (this.flatSky && scene.background === this.flatSky && !(camera as OrthographicCamera).isOrthographicCamera) scene.background = this.sky
+  }
 
   apply(settings: SceneSettings): void {
     this.settings = settings
@@ -60,7 +73,9 @@ export class SceneEnvironment {
   dispose(): void {
     this.disposed = true
     this.sky?.dispose()
+    this.flatSky?.dispose()
     this.envTarget?.dispose()
+    if (this.engine.scene.onBeforeRender === this.swapSky) this.engine.scene.onBeforeRender = () => {}
     if (this.post && this.engine.pipeline === this.post) this.engine.pipeline = null
   }
 
@@ -70,8 +85,10 @@ export class SceneEnvironment {
     if (key !== this.skyKey) {
       this.skyKey = key
       this.sky?.dispose()
+      this.flatSky?.dispose()
       this.envTarget?.dispose()
       this.sky = null
+      this.flatSky = null
       this.envTarget = null
       if (s.sky === 'gradient') this.setSky(gradientTexture(s.skyTop, s.skyHorizon, s.skyBottom), s)
       else if (s.sky === 'texture' && s.skyTexture) this.loadSkyTexture(s.skyTexture, key)
@@ -104,7 +121,12 @@ export class SceneEnvironment {
     texture.mapping = EquirectangularReflectionMapping
     texture.colorSpace = SRGBColorSpace
     texture.needsUpdate = true
-    if (background) this.sky = texture
+    if (background) {
+      this.sky = texture
+      this.flatSky = texture.clone()
+      this.flatSky.mapping = UVMapping
+      this.flatSky.needsUpdate = true
+    }
     if (s.environment) {
       const pmrem = new PMREMGenerator(this.engine.renderer)
       this.envTarget = pmrem.fromEquirectangular(texture)

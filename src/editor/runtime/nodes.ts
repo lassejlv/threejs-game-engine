@@ -21,6 +21,7 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   OctahedronGeometry,
+  OrthographicCamera,
   PerspectiveCamera,
   PlaneGeometry,
   PointLight,
@@ -42,6 +43,7 @@ import { decodeHeights, type EntityDoc, type MeshDoc, type Primitive } from '../
 import { Animator } from './animator'
 import { shadowMapSize } from './environment'
 import { ParticleEmitter } from './particles'
+import { SpriteRenderer } from './sprite'
 import { createTerrainMesh } from './terrain'
 
 /** Animation clip names per model asset, filled as models load (for the inspector's clip picker). */
@@ -104,6 +106,8 @@ export class NodeFactory {
 
   /** Play mode: every model animator, updated by the play scene each frame. */
   readonly animators = new Set<Animator>()
+  /** Every sprite, for sheet animation. */
+  readonly sprites = new Set<SpriteRenderer>()
   /** Every particle emitter; `updateParticles` steps them and drops disposed ones. */
   readonly emitters = new Set<ParticleEmitter>()
 
@@ -144,6 +148,7 @@ export class NodeFactory {
     node.userData.animator = undefined
     node.userData.particles = undefined
     node.userData.terrain = undefined
+    node.userData.sprite = undefined
 
     if (entity.mesh) {
       const m = entity.mesh
@@ -182,6 +187,16 @@ export class NodeFactory {
       }
       visual.add(mesh)
       node.userData.terrain = mesh
+    }
+
+    if (entity.sprite) {
+      const sprite = new SpriteRenderer(entity.sprite)
+      visual.add(sprite.mesh)
+      visual.userData.sprite = sprite
+      node.userData.sprite = sprite
+      this.sprites.add(sprite)
+      const url = entity.sprite.texture && this.library.url(entity.sprite.texture)
+      if (url) void this.engine.assets.texture(url).then((texture) => !sprite.disposed && sprite.setTexture(texture))
     }
 
     if (entity.model?.asset) this.loadModel(node, visual, entity)
@@ -232,7 +247,10 @@ export class NodeFactory {
     }
 
     if (entity.camera && !this.editorMode) {
-      const camera = new PerspectiveCamera(entity.camera.fov, 1, entity.camera.near, entity.camera.far)
+      const c = entity.camera
+      const camera =
+        c.projection === 'orthographic' ? new OrthographicCamera(-1, 1, 1, -1, c.near, c.far) : new PerspectiveCamera(c.fov, 1, c.near, c.far)
+      camera.userData.orthoSize = c.orthoSize
       node.userData.camera = camera
       visual.add(camera)
     }
@@ -273,6 +291,14 @@ export class NodeFactory {
     emitter.configure(entity.particles)
     if (textureChanged) this.loadParticleTexture(emitter, entity.particles.texture)
     return true
+  }
+
+  /** Advances sprite-sheet animation. Run once per frame. */
+  updateSprites(dt: number): void {
+    for (const sprite of this.sprites) {
+      if (sprite.disposed) this.sprites.delete(sprite)
+      else sprite.update(dt)
+    }
   }
 
   /** Steps every live emitter. Run once per frame. */
@@ -316,7 +342,7 @@ export class NodeFactory {
 
   /** Small pickable gizmos for things that are otherwise invisible. */
   private addProxy(visual: Group, entity: EntityDoc): void {
-    if (entity.mesh || entity.model || entity.terrain) return
+    if (entity.mesh || entity.model || entity.terrain || entity.sprite) return
     const kind = entity.light ? 'light' : entity.camera ? 'camera' : entity.audio ? 'audio' : entity.particles ? 'particles' : 'empty'
     const material = new MeshBasicMaterial({ color: proxyColors[kind], wireframe: true, fog: false })
     const proxy = new Mesh(proxyGeometry, material)
@@ -436,6 +462,7 @@ function configureShadow(light: DirectionalLight | PointLight | SpotLight, enabl
 export function disposeVisual(visual: Object3D): void {
   ;(visual.userData.animator as Animator | undefined)?.dispose()
   ;(visual.userData.particles as ParticleEmitter | undefined)?.dispose()
+  ;(visual.userData.sprite as SpriteRenderer | undefined)?.dispose()
   visual.traverse((o) => {
     if (o.userData.fromAsset) return
     const mesh = o as Mesh

@@ -1,5 +1,5 @@
-export { Engine } from './core/Engine'
-export type { CollisionEvent, EngineEvents, EngineOptions, EngineStats, RenderPipeline, SystemTiming } from './core/Engine'
+export { Engine, fitCamera } from './core/Engine'
+export type { CollisionEvent, EngineEvents, EngineOptions, EngineStats, GameCamera, RenderPipeline, SystemTiming } from './core/Engine'
 export { EventBus } from './core/EventBus'
 export { defineScene } from './core/GameScene'
 export type { GameScene, SceneContext } from './core/GameScene'

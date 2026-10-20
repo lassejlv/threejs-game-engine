@@ -22,6 +22,7 @@ import {
 } from './document'
 import { activeSessions } from './runtime/playSession'
 import { sampleProject } from './sample'
+import type { Template } from './templates'
 import { SCRIPT_TEMPLATE } from './scripting'
 
 export type Tool = 'translate' | 'rotate' | 'scale'
@@ -48,6 +49,8 @@ export interface EditorState {
   terrainTool: 'raise' | 'lower' | 'smooth' | 'flatten' | null
   brushRadius: number
   brushStrength: number
+  /** Scene view camera looks straight down -Z without rotating (for 2D scenes). */
+  view2D: boolean
   /** Scene view (free editor camera) or Game view (through the main camera). */
   view: 'scene' | 'game'
   mode: Mode
@@ -96,6 +99,7 @@ export const editorStore = createStore<EditorState>({
   showColliders: false,
   colliderHandles: false,
   terrainTool: null,
+  view2D: false,
   brushRadius: 4,
   brushStrength: 0.5,
   view: 'scene',
@@ -710,6 +714,12 @@ export function stepFrame(): void {
 
 export function newProject(blank: boolean): void {
   replaceDoc(blank ? emptyProject() : sampleProject())
+}
+
+/** Starts a new project from a template, switching the Scene view to 2D for 2D ones. */
+export function newFromTemplate(template: Template): void {
+  replaceDoc(template.create())
+  editorStore.set({ view2D: !!template.view2D })
 }
 
 export function exportProject(): void {

@@ -9,6 +9,7 @@ import {
   type Material,
   MathUtils,
   type Object3D,
+  OrthographicCamera,
   PerspectiveCamera,
   Raycaster,
   Vector2,
@@ -78,6 +79,7 @@ class DocSync {
             previous.light !== entity.light ||
             previous.camera !== entity.camera ||
             previous.terrain !== entity.terrain ||
+            previous.sprite !== entity.sprite ||
             !previous.particles !== !entity.particles)
         ) {
           this.factory.buildVisual(node, entity)
@@ -145,6 +147,7 @@ export function createEditScene(): GameScene {
 
       // Game-view preview camera (follows the scene's main camera entity).
       const gameCamera = new PerspectiveCamera(60, 1, 0.1, 1000)
+      const orthoGameCamera = new OrthographicCamera(-1, 1, 1, -1, 0.1, 1000)
 
       const gizmo = new TransformControls(editorCamera, engine.canvas)
       gizmo.setSize(0.9)
@@ -201,15 +204,37 @@ export function createEditScene(): GameScene {
         gizmo.dispose()
       })
 
+      // 2D view: a narrow field of view straight down -Z reads almost like an orthographic view.
+      let in2D = false
+      const set2D = (on: boolean) => {
+        if (on === in2D) return
+        in2D = on
+        const distance = editorCamera.position.distanceTo(orbit.target)
+        const visible = 2 * distance * Math.tan(MathUtils.degToRad(editorCamera.fov / 2))
+        editorCamera.fov = on ? 12 : 60
+        editorCamera.updateProjectionMatrix()
+        const next = visible / (2 * Math.tan(MathUtils.degToRad(editorCamera.fov / 2)))
+        if (on) editorCamera.position.set(orbit.target.x, orbit.target.y, orbit.target.z + next)
+        else editorCamera.position.copy(orbit.target).add(new Vector3(0, next * 0.5, next * 0.85))
+        editorCamera.lookAt(orbit.target)
+        orbit.enableRotate = !on
+        orbit.update()
+      }
+      cleanups.push(() => set2D(false))
+
       let entities: EntityDoc[] = []
       const applyState = () => {
         const state = editorStore.get()
+        set2D(state.view2D)
         entities = expandedTarget(state.doc, state.editing)
         sync.sync(entities)
         const prefabMode = state.editing.kind === 'prefab'
         environment.apply(prefabMode ? PREFAB_SETTINGS : currentScene(state).settings)
         studio.visible = prefabMode && !entities.some((e) => e.light)
         grid.visible = state.view === 'scene'
+        // In 2D the grid stands in the XY plane, just behind the sprites.
+        grid.rotation.x = state.view2D ? Math.PI / 2 : 0
+        grid.position.set(0, state.view2D ? 0 : 0.01, state.view2D ? -0.05 : 0)
 
         const primary = primarySelection(state)
         const node = primary ? sync.nodes.get(primary) : undefined
@@ -339,6 +364,7 @@ export function createEditScene(): GameScene {
       })
 
       engine.addSystem({ name: 'editor.particles', phase: 'late', order: 100, run: (_engine, dt) => factory.updateParticles(dt) })
+      engine.addSystem({ name: 'editor.sprites', phase: 'late', order: 100, run: (_engine, dt) => factory.updateSprites(dt) })
 
       engine.addSystem({
         name: 'editor.view',
@@ -351,11 +377,19 @@ export function createEditScene(): GameScene {
             const main = entities.find((e) => e.camera?.main && e.active)
             const node = main && sync.nodes.get(main.id)
             if (main?.camera && node) {
-              node.getWorldPosition(gameCamera.position)
-              node.getWorldQuaternion(gameCamera.quaternion)
-              if (gameCamera.fov !== main.camera.fov) {
-                gameCamera.fov = main.camera.fov
+              const c = main.camera
+              // Orthographic main cameras get an orthographic preview.
+              const preview = c.projection === 'orthographic' ? orthoGameCamera : gameCamera
+              if (engine.camera !== preview) engine.camera = preview
+              node.getWorldPosition(preview.position)
+              node.getWorldQuaternion(preview.quaternion)
+              if (preview === gameCamera && gameCamera.fov !== c.fov) {
+                gameCamera.fov = c.fov
                 gameCamera.updateProjectionMatrix()
+              }
+              if (preview === orthoGameCamera && orthoGameCamera.userData.orthoSize !== c.orthoSize) {
+                orthoGameCamera.userData.orthoSize = c.orthoSize
+                engine.camera = orthoGameCamera // refits to the viewport
               }
             }
           }

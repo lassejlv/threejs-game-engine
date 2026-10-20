@@ -6,6 +6,7 @@ import type { AnimationApi } from './runtime/animator'
 import type { MusicApi, VolumeApi } from './runtime/audioMixer'
 import type { NavApi } from './runtime/navigation'
 import type { ParticlesApi } from './runtime/particles'
+import type { SpriteApi } from './runtime/sprite'
 import type { TimerHandle, TweenOptions } from './runtime/timers'
 import type { UiApi } from './runtime/gameUi'
 
@@ -104,6 +105,8 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly animation: AnimationApi | undefined
   /** Present when the entity has a Particle Emitter. */
   readonly particles: ParticlesApi | undefined
+  /** Present when the entity has a Sprite. */
+  readonly sprite: SpriteApi | undefined
   /** Pathfinding over the scene's static geometry. */
   readonly nav: NavApi
   /** Background music that carries across scenes. */
@@ -615,8 +618,85 @@ const Wander: Behavior = {
   },
 }
 
+const PlayerController2D: Behavior = {
+  name: 'PlayerController2D',
+  description: 'Side-on movement along X with MoveX, Jump to jump (coyote time and buffering), facing the way it moves. Needs a 2D (planar) Rigid Body.',
+  params: { speed: 7, jumpSpeed: 12, acceleration: 70, respawnBelow: -20 },
+  start(ctx) {
+    ctx.state.spawn = ctx.body?.position.clone()
+    ctx.state.sinceGrounded = Infinity
+    ctx.state.sinceJump = Infinity
+    if (!ctx.body) ctx.warn(`${ctx.name}: PlayerController2D needs a Rigid Body`)
+  },
+  fixedUpdate(ctx, dt) {
+    const body = ctx.body
+    if (!body) return
+    const p = ctx.params as Record<string, number>
+    const s = ctx.state as { sinceGrounded: number; sinceJump: number; spawn?: THREE.Vector3 }
+    const move = ctx.input.getAxis('MoveX')
+    const accel = (body.grounded ? p.acceleration : p.acceleration * 0.5) * dt
+    body.velocity.x = moveTowards(body.velocity.x, move * p.speed, accel)
+    body.velocity.z = 0
+    s.sinceGrounded = body.grounded ? 0 : s.sinceGrounded + dt
+    s.sinceJump = ctx.input.actionPressed('Jump') ? 0 : s.sinceJump + dt
+    if (s.sinceJump <= 0.12 && s.sinceGrounded <= 0.12) {
+      body.velocity.y = p.jumpSpeed
+      s.sinceGrounded = s.sinceJump = Infinity
+    }
+    // Short hops when Jump is released early.
+    if (body.velocity.y > 0 && !ctx.input.action('Jump')) body.velocity.y *= 0.85
+    if (body.position.y < p.respawnBelow) respawn(ctx, s.spawn)
+  },
+  update(ctx) {
+    const v = ctx.body?.velocity
+    if (!v) return
+    if (ctx.sprite && Math.abs(v.x) > 0.2) ctx.sprite.flipX = v.x < 0
+    ctx.animation?.set('speed', Math.abs(v.x))
+    ctx.animation?.set('grounded', ctx.body?.grounded ?? true)
+    ctx.animation?.set('verticalSpeed', v.y)
+  },
+}
+
+const FollowCamera2D: Behavior = {
+  name: 'FollowCamera2D',
+  description: 'Keeps a side-on camera on the target (x and y), looking a little ahead of where it moves. Put it on the camera.',
+  params: { target: 'Player', smoothing: 6, height: 1.5, lookAhead: 2 },
+  lateUpdate(ctx, dt) {
+    const p = ctx.params as { target: string; smoothing: number; height: number; lookAhead: number }
+    const target = ctx.find(p.target)
+    if (!target) return
+    target.object.getWorldPosition(v1)
+    const vx = target.body?.velocity.x ?? 0
+    const ahead = Math.abs(vx) > 0.5 ? Math.sign(vx) * p.lookAhead : 0
+    if (ctx.state.ready === undefined) {
+      ctx.object.position.x = v1.x
+      ctx.object.position.y = v1.y + p.height
+      ctx.state.ready = true
+    }
+    ctx.object.position.x = damp(ctx.object.position.x, v1.x + ahead, p.smoothing, dt)
+    ctx.object.position.y = damp(ctx.object.position.y, v1.y + p.height, p.smoothing, dt)
+  },
+}
+
 export const BUILTINS: Record<string, Behavior> = Object.fromEntries(
-  [Rotate, Bob, PlayerController, FollowCamera, Collectible, DestroyBelow, MovingPlatform, Patrol, Health, Hazard, Checkpoint, Door, Chase, Wander].map(
+  [
+    Rotate,
+    Bob,
+    PlayerController,
+    FollowCamera,
+    PlayerController2D,
+    FollowCamera2D,
+    Collectible,
+    DestroyBelow,
+    MovingPlatform,
+    Patrol,
+    Health,
+    Hazard,
+    Checkpoint,
+    Door,
+    Chase,
+    Wander,
+  ].map(
     (b) => [`builtin:${b.name}`, b],
   ),
 )

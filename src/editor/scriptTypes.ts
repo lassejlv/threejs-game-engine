@@ -170,6 +170,8 @@ declare module 'engine' {
     readonly animation: Animation | undefined
     /** Present when the entity has a Particle Emitter. */
     readonly particles: Particles | undefined
+    /** Present when the entity has a Sprite: flipX, frame, fps (sheet animation) and color. */
+    readonly sprite: { flipX: boolean; frame: number; fps: number; color: string } | undefined
     /** Pathfinding over the scene's static colliders. */
     readonly nav: Nav
     /** Background music that keeps playing (or cross-fades) across scenes. */

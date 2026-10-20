@@ -16,13 +16,15 @@ CI (GitHub Actions) runs the typecheck, unit tests, build and the browser smoke 
 On first launch the editor opens **Coin Rush**, a sample project made only with editor features: prefabs and a prefab variant, two scenes linked by portals, joints, particles, a patrolling hazard, a checkpoint, an elevator, a pathfinding ghost, editor-made screen UI, built-in scripts and project scripts. Press ▶ (Ctrl/Cmd+P) to play it.
 In play mode: WASD moves, Space jumps, Shift sprints, E throws a ball, drag the mouse to look. On touch screens an on-screen joystick and buttons appear.
 
+**File → New from template…** starts from one of five projects: Coin Rush, **Sky Hopper** (a 2D platformer), **Arena** (top-down waves of enemies that path-find to you), **Kart Loop** (racing with laps and a saved best lap) and Empty.
+
 ## The editor
 
 | Area      | What it does |
 | --------- | ------------ |
-| Toolbar   | File (new / open / export JSON / Project Settings), undo/redo, move/rotate/scale tools, snapping, Create, Play / Pause / Step, and Build (run, download `.html`, download installable web app `.zip`) |
+| Toolbar   | File (new, new from template, open, export JSON, Project Settings), undo/redo, move/rotate/scale tools, snapping, Create, Play / Pause / Step, and Build (run, download `.html`, download installable web app `.zip`) |
 | Hierarchy | Screen UI elements, then the entity tree. Search by name or component (`t:light`, `t:script`, `t:collider`…). Shift/Ctrl/Cmd-click selects several entities, double-click renames, drag reparents, and the prefab button turns the selection into a prefab |
-| Viewport  | **Scene** tab: orbit camera, gizmos (they move every selected entity), click to select, collider outlines and draggable collider handles. **Game** tab: the view through the main camera, where screen UI is laid out by dragging. Play switches to Game automatically. The Colliders toggle also draws physics shapes, joints and the navigation grid while playing |
+| Viewport  | **Scene** tab: orbit camera (or a flat side view with the **2D** toggle), gizmos (they move every selected entity), click to select, collider outlines and draggable collider handles. **Game** tab: the view through the main camera, where screen UI is laid out by dragging. Play switches to Game automatically. The Colliders toggle also draws physics shapes, joints and the navigation grid while playing |
 | Inspector | Transform and components, plus Add Component. Edits apply to every selected entity that has the field. Prefab instances can override any field of any part of their prefab. With nothing selected it shows scene settings. While playing, a **Live** panel shows the selected entity's runtime state and lets you tweak it |
 | Project   | Scenes (open, rename, set the start scene), prefabs (edit, place, create variants), scripts, and assets with thumbnails. Deleting an asset lists where it is used first |
 | Console   | Script logs and errors. A script that throws is disabled and reported with its line number; the game keeps running |
@@ -47,10 +49,12 @@ The project autosaves to localStorage. Assets (.glb models, .png/.jpg/.webp text
 - Mesh Renderer: 7 primitives; PBR material with color, normal, roughness, metalness and emissive maps, tiling, opacity and double-sided rendering
 - Model: glTF with a single clip or an **animation state machine** (states, 1D blends by a parameter, transitions on conditions like `speed > 0.1 && grounded`, triggers, or when a clip ends), up to four LOD levels and a cull distance
 - Light: directional, point, spot or hemisphere, with shadows
-- Camera: the *main* camera is used in play mode
+- Camera: perspective or orthographic; the *main* camera is used in play mode
+- Sprite: a flat, unlit image or colored rectangle with tint, flip, pixel-art filtering, sprite-sheet animation and draw order
+- Terrain: a heightfield you sculpt in the Scene view (raise, lower, smooth, flatten), colored by slope, with a matching physics collider
 - Audio Source: 2D or 3D, loop, play on start
 - Particle Emitter: rate per second and per meter (trails), burst and duration, point/sphere/box shapes, spread, gravity, drag, size and opacity curves, color over life, spin, sprite sheets, additive or normal (sorted) blending, world or local space, and sub-emitters that fire where a parent's particles spawn or die. **Auto destroy** makes one-shot effects you can `spawn`
-- Rigid Body: dynamic, kinematic or character
+- Rigid Body: dynamic, kinematic or character; **2D** locks it to the XY plane
 - Collider: box, sphere, capsule, cylinder, exact mesh or convex hull (built from the mesh or model); trigger option; a physics layer
 - Joint: hinge, ball, fixed, slider or spring to another body or the world, with limits and motors
 - Scripts
@@ -105,8 +109,9 @@ export default {
 | `sound.play(asset)`, `sound.tone(freq)`, `audio.play()`, `music.play(asset)`, `volume.set(group, v)` | one-shots, a built-in synth, the entity's Audio Source, cross-fading music, master/music/sfx volume |
 | `animation.play(clip or state)`, `animation.set(param, v)`, `animation.trigger(name)` | glTF animation and its state machine |
 | `particles.play() / stop() / burst(n) / clear()` | the entity's Particle Emitter |
+| `sprite.frame / fps / flipX / color` | the entity's Sprite |
 
-Built-in scripts: `PlayerController`, `FollowCamera`, `Collectible`, `Rotate`, `Bob`, `DestroyBelow`, `MovingPlatform`, `Patrol`, `Health`, `Hazard`, `Checkpoint`, `Door`, `Chase` and `Wander`. They read the default input names (Jump, Sprint, Fire, Interact, MoveX/Y, LookX/Y), so remapping keys in Project Settings works for them too.
+Built-in scripts: `PlayerController`, `FollowCamera`, `PlayerController2D`, `FollowCamera2D`, `Collectible`, `Rotate`, `Bob`, `DestroyBelow`, `MovingPlatform`, `Patrol`, `Health`, `Hazard`, `Checkpoint`, `Door`, `Chase` and `Wander`. They read the default input names (Jump, Sprint, Fire, Interact, MoveX/Y, LookX/Y), so remapping keys in Project Settings works for them too.
 
 ### Exporting a game
 
@@ -115,6 +120,10 @@ Built-in scripts: `PlayerController`, `FollowCamera`, `Collectible`, `Rotate`, `
 **Build → Run in new tab** opens a quick build directly.
 By default exports leave out unused assets, meshopt-compress models and re-encode textures as WebP when that is smaller (Project Settings → General).
 The player is about 5.3 MB plus your assets (1.9 MB gzipped), and Rapier's WASM accounts for most of that. Exported games show a loading screen and fade between scenes.
+
+### 2D games
+
+Add a **2D Camera** (orthographic, from Create → 2D) and **Sprites**, and tick **2D** on rigid bodies so they stay in the XY plane. The 2D toggle above the Scene view switches to a flat side view. `PlayerController2D` and `FollowCamera2D` handle running, jumping and a camera that follows with look-ahead. Sky Hopper is a complete example.
 
 ## Architecture
 

@@ -222,4 +222,19 @@ describe('RapierPhysics', () => {
     expect(physics.raycast(new Vector3(-5, 10, 5), down, 20)!.point.y).toBeCloseTo(0, 1)
     expect(physics.raycast(new Vector3(0, 10, 0), down, 20)!.point.y).toBeCloseTo(0, 1)
   })
+
+  it('keeps planar (2D) bodies in the XY plane', async () => {
+    const { engine, run } = await setup()
+    const ramp = spawn(engine, [0, 0, 0], -0.4)
+    ramp.object.rotation.x = 0.3 // tilted toward +z too: a 3D body would slide off sideways
+    ramp.object.updateMatrixWorld()
+    engine.world.add(ramp.entity, Collider, boxCollider(6, 0.2, 6))
+    const ball = spawn(engine, [0, 2, 0])
+    engine.world.add(ball.entity, RigidBody, rigidBody(ball.object, { planar: true }))
+    engine.world.add(ball.entity, Collider, sphereCollider(0.3))
+    run(90)
+    const p = engine.world.get(ball.entity, RigidBody).position
+    expect(p.x).toBeGreaterThan(0.5)
+    expect(Math.abs(p.z)).toBeLessThan(1e-3)
+  })
 })

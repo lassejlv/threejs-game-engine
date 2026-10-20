@@ -30,6 +30,8 @@ export interface RigidBodyData {
   character: boolean
   /** Prevents physics from rotating the body. */
   lockRotation: boolean
+  /** 2D: moves only in the XY plane and turns only around Z (Rapier). */
+  planar: boolean
   /** Mass in kg; 0 derives it from collider volume. */
   mass: number
   /** Interpolate the Transform between fixed steps. Default true. */
@@ -53,6 +55,7 @@ export function rigidBody(object: Object3D, options: Partial<RigidBodyData> = {}
     kinematic: false,
     character: false,
     lockRotation: false,
+    planar: false,
     mass: 0,
     interpolate: true,
     grounded: false,

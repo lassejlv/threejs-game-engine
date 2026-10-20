@@ -24,6 +24,7 @@ import {
   defineScene,
   type Engine,
   type Entity,
+  type GameCamera,
   type GameScene,
   loadRapier,
   RapierPhysics,
@@ -115,7 +116,7 @@ export class PlayBuilder {
     const nodes = new Map<string, Group>()
     const ids = new Map<string, Entity>()
     const inactive = new Set<string>()
-    let mainCamera: PerspectiveCamera | null = null
+    let mainCamera: GameCamera | null = null
 
     for (const e of entities) {
       if (!e.active || (e.parent && inactive.has(e.parent))) {
@@ -123,7 +124,7 @@ export class PlayBuilder {
         continue
       }
       const node = this.factory.createNode(e)
-      const camera = node.userData.camera as PerspectiveCamera | undefined
+      const camera = node.userData.camera as GameCamera | undefined
       if (e.camera?.main && camera && !mainCamera) mainCamera = camera
       const parentNode = e.parent ? nodes.get(e.parent) : parent?.node
       parentNode?.add(node)
@@ -142,7 +143,7 @@ export class PlayBuilder {
       if (e.rigidBody) {
         // Bodies simulate in world space, so lift them out of any hierarchy.
         if (node.parent !== scene) scene.attach(node)
-        const { type, gravityScale, damping, restitution, mass, lockRotation } = e.rigidBody
+        const { type, gravityScale, damping, restitution, mass, lockRotation, planar } = e.rigidBody
         world.add(
           entity,
           RigidBody,
@@ -154,6 +155,7 @@ export class PlayBuilder {
             restitution,
             mass,
             lockRotation,
+            planar,
           }),
         )
       }
@@ -318,6 +320,7 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
         },
       })
       engine.addSystem({ name: 'particles', phase: 'late', order: 100, run: (_engine, dt) => factory.updateParticles(dt) })
+      engine.addSystem({ name: 'sprites', phase: 'update', order: 10, run: (_engine, dt) => factory.updateSprites(dt) })
       engine.addSystem({ name: 'batching', phase: 'render', order: -10, run: () => batcher.update() })
       if (options.showColliders) {
         const show = options.showColliders

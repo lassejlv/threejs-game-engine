@@ -1,4 +1,4 @@
-import { HalfFloatType, type PerspectiveCamera, type Scene, Vector2, type WebGLRenderer, WebGLRenderTarget } from 'three'
+import { type Camera, HalfFloatType, type Scene, Vector2, type WebGLRenderer, WebGLRenderTarget } from 'three'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
@@ -48,7 +48,7 @@ export class PostProcessing {
   private readonly bloom: UnrealBloomPass
   private readonly grade: ShaderPass
 
-  constructor(renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCamera) {
+  constructor(renderer: WebGLRenderer, scene: Scene, camera: Camera) {
     const size = renderer.getDrawingBufferSize(new Vector2())
     const target = new WebGLRenderTarget(size.x, size.y, { type: HalfFloatType, samples: 4 })
     this.composer = new EffectComposer(renderer, target)
@@ -73,7 +73,7 @@ export class PostProcessing {
     this.grade.enabled = s.vignette > 0 || s.saturation !== 1 || s.contrast !== 1
   }
 
-  render(scene: Scene, camera: PerspectiveCamera, dt: number): void {
+  render(scene: Scene, camera: Camera, dt: number): void {
     this.renderPass.scene = scene
     this.renderPass.camera = camera
     this.composer.render(dt)

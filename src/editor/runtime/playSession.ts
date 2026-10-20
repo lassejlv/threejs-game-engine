@@ -3,6 +3,7 @@ import { defaultNavSettings, defineComponent, type Engine, type Entity, type Nav
 import { log } from '../console'
 import type { Animator } from './animator'
 import type { ParticleEmitter } from './particles'
+import type { SpriteRenderer } from './sprite'
 import { AudioMixer } from './audioMixer'
 import { Navigation } from './navigation'
 import { drawUiElement, isLive } from './sceneUi'
@@ -322,6 +323,7 @@ export class PlaySession {
       audio: audioApi(handle.object.userData.audio as Audio | undefined),
       animation: handle.object.userData.animator as Animator | undefined,
       particles: handle.object.userData.particles as ParticleEmitter | undefined,
+      sprite: handle.object.userData.sprite as SpriteRenderer | undefined,
       nav: this.navigation.api(handle),
       music: {
         play: (asset, options) => {

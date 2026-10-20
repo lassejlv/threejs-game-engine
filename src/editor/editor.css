@@ -1036,3 +1036,44 @@ body.resizing canvas {
   background: var(--accent);
   color: white;
 }
+.template-dialog {
+  width: min(720px, 100%);
+}
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+.template-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  text-align: left;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+.template-card:hover {
+  border-color: var(--accent);
+}
+.template-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.template-tag {
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.template-description {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}

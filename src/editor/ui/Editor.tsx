@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { PerspectiveCamera } from 'three'
-import type { Engine } from '../../engine'
+import type { Engine, GameCamera } from '../../engine'
 import { DebugOverlay, GameCanvas, useStore } from '../../react'
 import {
   assetLibrary,
@@ -33,7 +32,7 @@ import '../editor.css'
 const editScene = createEditScene()
 
 /** The camera the running game chose, so the Scene/Game tabs can switch back and forth while playing. */
-let gameCamera: PerspectiveCamera | null = null
+let gameCamera: GameCamera | null = null
 
 function applyPlayView(engine: Engine): void {
   const { mode, view } = editorStore.get()
@@ -51,6 +50,7 @@ export function Editor() {
   const playRun = useStore(editorStore, (s) => s.playRun)
   const view = useStore(editorStore, (s) => s.view)
   const showColliders = useStore(editorStore, (s) => s.showColliders)
+  const view2D = useStore(editorStore, (s) => s.view2D)
 
   const scene = useMemo(
     () =>
@@ -97,6 +97,15 @@ export function Editor() {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className={`tool-button ${view2D ? 'active' : ''}`}
+            onClick={() => editorStore.set({ view2D: !view2D, view: 'scene' })}
+            title="2D view: look straight at the XY plane (pan and zoom only)"
+            aria-pressed={view2D}
+          >
+            2D
+          </button>
           <button
             type="button"
             className={`tool-button ${showColliders ? 'active' : ''}`}

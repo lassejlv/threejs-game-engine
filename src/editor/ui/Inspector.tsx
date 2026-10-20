@@ -995,6 +995,27 @@ function ComponentSections({
         </Section>
       )}
 
+      {entity.sprite && (
+        <Section title={COMPONENT_LABELS.sprite} icon={<Icon name="sprite" />} onRemove={removeComponent && (() => removeComponent('sprite'))}>
+          <AssetSelect kind="texture" label="Texture" value={entity.sprite.texture} onChange={(texture) => setComponent('sprite', { texture }, 'tex')} />
+          <ColorField label="Color" value={entity.sprite.color} onChange={(color) => setComponent('sprite', { color }, 'color')} />
+          <NumberField label="Width" value={entity.sprite.size[0]} step={0.05} min={0.01} onChange={(w) => setComponent('sprite', { size: [w, entity.sprite!.size[1]] }, 'w')} />
+          <NumberField label="Height" value={entity.sprite.size[1]} step={0.05} min={0.01} onChange={(h) => setComponent('sprite', { size: [entity.sprite!.size[0], h] }, 'h')} />
+          <CheckField label="Flip X" value={entity.sprite.flipX} onChange={(flipX) => setComponent('sprite', { flipX }, 'flip')} />
+          <CheckField label="Pixel art" value={entity.sprite.pixelArt} onChange={(pixelArt) => setComponent('sprite', { pixelArt }, 'pixel')} />
+          {entity.sprite.texture && (
+            <>
+              <NumberField label="Sheet columns" value={entity.sprite.sheetColumns} step={1} min={1} onChange={(v) => setComponent('sprite', { sheetColumns: Math.max(1, Math.round(v)) }, 'cols')} />
+              <NumberField label="Sheet rows" value={entity.sprite.sheetRows} step={1} min={1} onChange={(v) => setComponent('sprite', { sheetRows: Math.max(1, Math.round(v)) }, 'rows')} />
+              <NumberField label="Frame" value={entity.sprite.frame} step={1} min={0} onChange={(v) => setComponent('sprite', { frame: Math.max(0, Math.round(v)) }, 'frame')} />
+              <NumberField label="FPS (0 = still)" value={entity.sprite.fps} step={1} min={0} onChange={(fps) => setComponent('sprite', { fps }, 'fps')} />
+            </>
+          )}
+          <NumberField label="Order" value={entity.sprite.order} step={1} onChange={(order) => setComponent('sprite', { order: Math.round(order) }, 'order')} />
+          <p className="hint">Faces +Z (the 2D view looks at it head on). Higher order draws in front. Scripts: ctx.sprite.</p>
+        </Section>
+      )}
+
       {entity.light && (
         <Section title={COMPONENT_LABELS.light} icon={<Icon name="light" />} onRemove={removeComponent && (() => removeComponent('light'))}>
           <SelectField
@@ -1025,7 +1046,17 @@ function ComponentSections({
 
       {entity.camera && (
         <Section title={COMPONENT_LABELS.camera} icon={<Icon name="camera" />} onRemove={removeComponent && (() => removeComponent('camera'))}>
-          <NumberField label="Field of view" value={entity.camera.fov} step={1} min={1} max={170} onChange={(fov) => setComponent('camera', { fov }, 'fov')} />
+          <SelectField
+            label="Projection"
+            value={entity.camera.projection}
+            options={[['perspective', 'Perspective'], ['orthographic', 'Orthographic (2D)']]}
+            onChange={(projection) => setComponent('camera', { projection }, 'proj')}
+          />
+          {entity.camera.projection === 'orthographic' ? (
+            <NumberField label="Size (half height)" value={entity.camera.orthoSize} step={0.5} min={0.1} onChange={(orthoSize) => setComponent('camera', { orthoSize }, 'osize')} />
+          ) : (
+            <NumberField label="Field of view" value={entity.camera.fov} step={1} min={1} max={170} onChange={(fov) => setComponent('camera', { fov }, 'fov')} />
+          )}
           <NumberField label="Near" value={entity.camera.near} step={0.01} min={0.001} onChange={(near) => setComponent('camera', { near }, 'near')} />
           <NumberField label="Far" value={entity.camera.far} step={10} min={1} onChange={(far) => setComponent('camera', { far }, 'far')} />
           <CheckField label="Main camera" value={entity.camera.main} onChange={(main) => setComponent('camera', { main }, 'main')} />
@@ -1068,6 +1099,7 @@ function ComponentSections({
               <NumberField label="Bounciness" value={entity.rigidBody.restitution} step={0.05} min={0} max={1} onChange={(restitution) => setComponent('rigidBody', { restitution }, 'rest')} />
             </>
           )}
+          <CheckField label="2D (XY plane)" value={entity.rigidBody.planar} onChange={(planar) => setComponent('rigidBody', { planar }, 'planar')} />
           {entity.rigidBody.type !== 'kinematic' && (
             <NumberField label="Gravity scale" value={entity.rigidBody.gravityScale} step={0.05} onChange={(gravityScale) => setComponent('rigidBody', { gravityScale }, 'gs')} />
           )}

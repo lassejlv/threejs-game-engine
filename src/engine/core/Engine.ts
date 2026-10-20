@@ -3,6 +3,7 @@ import {
   NeutralToneMapping,
   type Object3D,
   PCFShadowMap,
+  type OrthographicCamera,
   PerspectiveCamera,
   Scene,
   Vector3,
@@ -86,9 +87,25 @@ interface SystemEntry {
 
 const STATS_INTERVAL = 250
 
+/** The camera the engine renders with. Orthographic cameras keep `userData.orthoSize` (half the view height in meters). */
+export type GameCamera = PerspectiveCamera | OrthographicCamera
+
+/** Matches a camera's projection to a viewport aspect ratio. */
+export function fitCamera(camera: GameCamera, aspect: number): void {
+  if ((camera as OrthographicCamera).isOrthographicCamera) {
+    const ortho = camera as OrthographicCamera
+    const size = (ortho.userData.orthoSize as number | undefined) ?? 5
+    ortho.left = -size * aspect
+    ortho.right = size * aspect
+    ortho.top = size
+    ortho.bottom = -size
+  } else (camera as PerspectiveCamera).aspect = aspect
+  camera.updateProjectionMatrix()
+}
+
 /** Replaces the plain `renderer.render` call, e.g. with a post-processing chain. */
 export interface RenderPipeline {
-  render(scene: Scene, camera: PerspectiveCamera, dt: number): void
+  render(scene: Scene, camera: GameCamera, dt: number): void
   /** CSS size and pixel ratio of the canvas. */
   setSize(width: number, height: number, pixelRatio: number): void
   dispose(): void
@@ -112,7 +129,7 @@ export class Engine {
   /** Measure per-system timings (small overhead). */
   profiling = false
 
-  private _camera: PerspectiveCamera
+  private _camera: GameCamera
   private _paused = false
   private stepRequested = false
   private running = false
@@ -187,11 +204,11 @@ export class Engine {
     this.resize()
   }
 
-  get camera(): PerspectiveCamera {
+  get camera(): GameCamera {
     return this._camera
   }
 
-  set camera(camera: PerspectiveCamera) {
+  set camera(camera: GameCamera) {
     this._camera = camera
     this.resize()
   }
@@ -438,8 +455,7 @@ export class Engine {
     this.renderer.setPixelRatio(pixelRatio)
     this.renderer.setSize(width, height, false)
     this._pipeline?.setSize(width, height, pixelRatio)
-    this._camera.aspect = width / height
-    this._camera.updateProjectionMatrix()
+    fitCamera(this._camera, width / height)
     this.events.emit('resize', { width, height })
   }
 }

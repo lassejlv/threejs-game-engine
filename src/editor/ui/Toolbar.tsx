@@ -7,6 +7,7 @@ import {
   editorStore,
   exportProject,
   importProject,
+  newFromTemplate,
   newProject,
   play,
   redo,
@@ -24,6 +25,7 @@ import { TextInput } from './fields'
 import { Icon, type IconName } from './icons'
 import { Menu, type MenuItem } from './Menu'
 import { ProjectSettingsDialog } from './ProjectSettings'
+import { TemplateDialog } from './TemplateDialog'
 
 export function createMenuItems(parent: string | null = null): MenuItem[] {
   return PRESETS.map((preset) => ({
@@ -56,6 +58,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
   const fps = useStore(engine?.stats ?? fallbackStats, (s) => s.fps)
   const fileInput = useRef<HTMLInputElement>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   const playing = mode === 'play'
 
   return (
@@ -67,7 +70,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
           label="File"
           items={[
             { label: 'New empty scene', onSelect: () => confirmDiscard() && newProject(true) },
-            { label: 'New from sample (Coin Rush)', onSelect: () => confirmDiscard() && newProject(false) },
+            { label: 'New from template…', onSelect: () => setTemplatesOpen(true) },
             { label: 'Open project…', onSelect: () => fileInput.current?.click() },
             { label: 'Export project', onSelect: exportProject },
             { label: 'Project settings…', onSelect: () => setSettingsOpen(true) },
@@ -149,6 +152,16 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
         <span className="fps">{fps} fps</span>
       </div>
       {settingsOpen && <ProjectSettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {templatesOpen && (
+        <TemplateDialog
+          onClose={() => setTemplatesOpen(false)}
+          onPick={(template) => {
+            if (!confirmDiscard()) return
+            setTemplatesOpen(false)
+            newFromTemplate(template)
+          }}
+        />
+      )}
     </header>
   )
 }

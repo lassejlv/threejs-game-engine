@@ -2,7 +2,7 @@ import { componentDefaults, type EntityDoc, type LightType, PRIMITIVE_COLLIDER, 
 
 export interface Preset {
   label: string
-  group: 'General' | '3D Object' | 'Light' | 'Effects'
+  group: 'General' | '3D Object' | '2D' | 'Light' | 'Effects'
   name: string
   create(): Partial<EntityDoc>
 }
@@ -42,16 +42,31 @@ export const PRESETS: Preset[] = [
   primitive('plane', 'Plane'),
   primitive('cone', 'Cone'),
   primitive('torus', 'Torus'),
-  light('directional', 'Directional Light', { intensity: 2, castShadow: true }),
-  light('point', 'Point Light', { intensity: 20, distance: 20 }),
-  light('spot', 'Spot Light', { intensity: 40, distance: 30 }),
-  light('hemisphere', 'Hemisphere Light'),
   {
     label: 'Terrain',
     group: '3D Object',
     name: 'Terrain',
     create: () => ({ terrain: componentDefaults.terrain() }),
   },
+  {
+    label: 'Sprite',
+    group: '2D',
+    name: 'Sprite',
+    create: () => ({ sprite: componentDefaults.sprite() }),
+  },
+  {
+    label: '2D Camera',
+    group: '2D',
+    name: '2D Camera',
+    create: () => ({
+      camera: { ...componentDefaults.camera(), projection: 'orthographic', main: false },
+      transform: { position: [0, 0, 20], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    }),
+  },
+  light('directional', 'Directional Light', { intensity: 2, castShadow: true }),
+  light('point', 'Point Light', { intensity: 20, distance: 20 }),
+  light('spot', 'Spot Light', { intensity: 40, distance: 30 }),
+  light('hemisphere', 'Hemisphere Light'),
   {
     label: 'Particle System',
     group: 'Effects',

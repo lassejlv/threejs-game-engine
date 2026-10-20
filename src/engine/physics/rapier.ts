@@ -397,6 +397,7 @@ export class RapierPhysics {
   private moveCharacter(data: RigidBodyData, record: BodyRecord, dt: number): void {
     const g = this.engine.physics.gravity
     data.velocity.addScaledVector(g, data.gravityScale * dt)
+    if (data.planar) data.velocity.z = 0
     const desired = { x: data.velocity.x * dt, y: data.velocity.y * dt, z: data.velocity.z * dt }
     const controller = record.controller!
     controller.computeColliderMovement(record.collider!, desired, this.R.QueryFilterFlags.EXCLUDE_SENSORS)
@@ -489,6 +490,8 @@ export class RapierPhysics {
       .setLinearDamping(data.damping)
       .setGravityScale(data.gravityScale)
     if (data.lockRotation || data.character) desc.lockRotations()
+    else if (data.planar) desc.enabledRotations(false, false, true)
+    if (data.planar) desc.enabledTranslations(true, true, false)
     if (!data.kinematic && !data.character) desc.setCcdEnabled(true)
     const body = this.world.createRigidBody(desc)
 

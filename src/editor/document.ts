@@ -87,6 +87,31 @@ export interface CameraDoc {
   far: number
   /** The camera used in play mode. */
   main: boolean
+  /** Orthographic: no perspective, for 2D games and isometric views. */
+  projection: 'perspective' | 'orthographic'
+  /** Orthographic: half the visible height in meters. */
+  orthoSize: number
+}
+
+/** A flat textured (or plain colored) rectangle facing +Z: the building block of 2D games. */
+export interface SpriteDoc {
+  /** Texture asset id; none draws a plain rectangle. */
+  texture: string | null
+  /** Tint (multiplies the texture). */
+  color: string
+  /** Width and height in meters, before the entity's scale. */
+  size: [number, number]
+  flipX: boolean
+  /** Crisp pixels (nearest filtering) instead of smoothing. */
+  pixelArt: boolean
+  /** Sprite sheet: columns × rows of frames in the texture. */
+  sheetColumns: number
+  sheetRows: number
+  /** Frames per second to loop through the sheet; 0 shows `frame`. */
+  fps: number
+  frame: number
+  /** Higher draws in front of lower among overlapping sprites. */
+  order: number
 }
 
 export type BodyType = 'dynamic' | 'kinematic' | 'character'
@@ -112,6 +137,8 @@ export interface RigidBodyDoc {
   gravityScale: number
   damping: number
   restitution: number
+  /** 2D: moves only in the XY plane and turns only around Z. */
+  planar: boolean
 }
 
 export type EmitterShape = 'point' | 'sphere' | 'box'
@@ -295,6 +322,7 @@ export interface EntityDoc {
   camera?: CameraDoc
   audio?: AudioSourceDoc
   particles?: ParticlesDoc
+  sprite?: SpriteDoc
   rigidBody?: RigidBodyDoc
   collider?: ColliderDoc
   joint?: JointDoc
@@ -322,7 +350,7 @@ export type EntityOverride = { [K in ComponentKey]?: Partial<NonNullable<EntityD
   transform?: TransformDoc
 }
 
-const OVERRIDABLE: ComponentKey[] = ['mesh', 'model', 'light', 'camera', 'audio', 'particles', 'rigidBody', 'collider', 'joint', 'terrain']
+const OVERRIDABLE: ComponentKey[] = ['mesh', 'model', 'sprite', 'light', 'camera', 'audio', 'particles', 'rigidBody', 'collider', 'joint', 'terrain']
 
 /** An entity with an instance's overrides applied (only components it already has are changed). */
 export function applyOverride(e: EntityDoc, override: EntityOverride | undefined, isRoot: boolean): EntityDoc {
@@ -534,11 +562,12 @@ export interface ProjectDoc {
   scripts: ScriptDoc[]
 }
 
-export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'audio' | 'particles' | 'rigidBody' | 'collider' | 'joint' | 'terrain'
+export type ComponentKey = 'mesh' | 'model' | 'sprite' | 'light' | 'camera' | 'audio' | 'particles' | 'rigidBody' | 'collider' | 'joint' | 'terrain'
 
 export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   mesh: 'Mesh Renderer',
   model: 'Model',
+  sprite: 'Sprite',
   light: 'Light',
   camera: 'Camera',
   audio: 'Audio Source',
@@ -601,7 +630,19 @@ export const componentDefaults = {
     castShadow: false,
     shadowArea: 40,
   }),
-  camera: (): CameraDoc => ({ fov: 60, near: 0.1, far: 1000, main: true }),
+  camera: (): CameraDoc => ({ fov: 60, near: 0.1, far: 1000, main: true, projection: 'perspective', orthoSize: 6 }),
+  sprite: (): SpriteDoc => ({
+    texture: null,
+    color: '#ffffff',
+    size: [1, 1],
+    flipX: false,
+    pixelArt: true,
+    sheetColumns: 1,
+    sheetRows: 1,
+    fps: 0,
+    frame: 0,
+    order: 0,
+  }),
   audio: (): AudioSourceDoc => ({ asset: null, volume: 1, loop: false, playOnStart: true, spatial: true, refDistance: 5 }),
   particles: (): ParticlesDoc => ({
     playOnStart: true,
@@ -644,6 +685,7 @@ export const componentDefaults = {
     gravityScale: 1,
     damping: 0,
     restitution: 0,
+    planar: false,
   }),
   collider: (): ColliderDoc => ({
     shape: 'box',
@@ -941,6 +983,8 @@ function migrateEntity(raw: EntityDoc): EntityDoc {
   if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
   if (e.joint) e.joint = { ...componentDefaults.joint(), ...e.joint }
   if (e.terrain) e.terrain = { ...componentDefaults.terrain(), ...e.terrain }
+  if (e.camera) e.camera = { ...componentDefaults.camera(), ...e.camera }
+  if (e.sprite) e.sprite = { ...componentDefaults.sprite(), ...e.sprite }
   if (e.audio) e.audio = { ...componentDefaults.audio(), ...e.audio }
   if (e.model) e.model = { ...componentDefaults.model(), ...e.model }
   if (e.particles) e.particles = { ...componentDefaults.particles(), ...e.particles }
@@ -972,6 +1016,7 @@ export function assetReferences(doc: ProjectDoc, id: string, fileName: string): 
     if (e.audio?.asset === id) uses.push('Audio Source')
     if (e.particles?.texture === id) uses.push('Particle texture')
     if (e.terrain?.texture === id) uses.push('Terrain texture')
+    if (e.sprite?.texture === id) uses.push('Sprite')
     for (const ref of e.scripts) {
       if (Object.values(ref.params).some((v) => typeof v === 'string' && names.has(v))) uses.push('script parameter')
     }
