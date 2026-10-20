@@ -99,19 +99,19 @@ projects/
 - Two projects with different assets can be switched between without their assets mixing.
 - Fixture tests load a v1, v2 and v3 file and match expected snapshots.
 
-### Phase 2: published games are reliable
+### Phase 2: published games are reliable ✅
 
 **Outcome:** every exported game is tested automatically, loads quickly, survives common runtime failures, and works on the major browsers.
 
 **Why now:** exports are the product's output. Today they are only checked by hand: CI never builds or runs an exported game, only Chromium is tested, and there is no WebGL context-loss handling anywhere in `src/`.
 
 **Scope**
-- [ ] CI job: export every template (WebGL player, plus WebGPU for one template), open each in a browser, start it and check that it renders and responds to input.
-- [ ] Run the e2e suite on Firefox and WebKit as well as Chromium.
-- [ ] Handle WebGL context loss and restore in `src/engine/core/Engine.ts`, with a test that forces it.
-- [ ] Add an in-game error screen for exported games. Script errors and failed asset loads currently go only to the browser console (`src/player/player.ts`).
-- [ ] Set a load-time budget and measure it. The player is ~5.3 MB, mostly Rapier WASM: measure time-to-first-frame and decide whether to compile WASM in streaming fashion or load Rapier only when a project uses physics.
-- [ ] Add a performance budget test: frame time and draw calls for Coin Rush, so instancing (101 → 37 draw calls) can't regress silently.
+- [x] CI job: export every template (WebGL player, plus WebGPU for one template), open each in a browser, start it and check that it renders and responds to input.
+- [x] Run the e2e suite on Firefox and WebKit as well as Chromium.
+- [x] Handle WebGL context loss and restore in `src/engine/core/Engine.ts`, with a test that forces it.
+- [x] Add an in-game error screen for exported games. Script errors and failed asset loads currently go only to the browser console (`src/player/player.ts`).
+- [x] Set a load-time budget and measure it. The player is ~5.3 MB, mostly Rapier WASM: measure time-to-first-frame and decide whether to compile WASM in streaming fashion or load Rapier only when a project uses physics.
+- [x] Add a performance budget test: frame time and draw calls for Coin Rush, so instancing (101 → 37 draw calls) can't regress silently.
 
 **Dependencies**
 - Phase 1 bundles give the export tests real projects with assets.
@@ -226,6 +226,7 @@ projects/
 - **Multiplayer and cloud save:** out of scope.
 - **Play-mode isolation:** no separate origin while the editor is local and single-user; the trust prompt covers opening someone else's project (README, Security model).
 - **Script API stability:** everything in `docs/script-api.md` is public and follows semver from 1.0; `ctx.engine` and anything unlisted is internal.
+- **Browsers in CI:** Chromium, Firefox (headed under xvfb, since headless Firefox has no WebGL on Linux) and WebKit are all required. Load budgets are 5 s to the start screen and 10 s to the first frames, about three to five times the slowest CI numbers (WebKit: 1.2 s and 1.8 s).
 - **Rapier stays inlined:** exported games keep their single-file, offline-capable form. Measured load times (start screen ~0.3 s, first frames under 1 s with software rendering) don't justify lazy-loading physics.
 - **Prefab overrides** store added components whole and removed ones as `null`; patches for components the prefab doesn't have are still ignored, so older projects keep their meaning.
 - **Joints during play** come from scripts (`ctx.physics.connect` / `disconnect`) instead of a new component mode.

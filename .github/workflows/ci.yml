@@ -34,8 +34,6 @@ jobs:
     name: Browser tests (${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Firefox and WebKit run without blocking until they have been green for a while.
-    continue-on-error: ${{ matrix.browser != 'chromium' }}
     strategy:
       fail-fast: false
       matrix:

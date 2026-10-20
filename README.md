@@ -10,6 +10,7 @@ npm start          # serves a built editor and the file server together on http:
 npm test           # unit tests (engine, physics, navigation, document, editor, scripting, runtime, storage)
 npm run test:server  # file server tests (Bun)
 npm run test:e2e   # browser smoke test: loads the editor, plays, collects a coin
+npm run test:exports  # exports every template and plays it (E2E_BROWSER=firefox|webkit for other browsers)
 npm run build      # typecheck + production build of the editor
 ```
 

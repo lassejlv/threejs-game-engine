@@ -14,7 +14,7 @@ The first stable release: projects are stored locally and durably, exported game
 - `npm start`: the built editor and the file server on one local port.
 - Recovery from lost graphics contexts, with an on-screen notice.
 - An error list and a stop screen in exported games.
-- Size and draw-call budgets (`budgets.json`) checked in CI, and tests that export and play every template.
+- Size, draw-call and load-time budgets (`budgets.json`) checked in CI, and tests that export and play every template in Chromium, Firefox and WebKit.
 - MIT license.
 - Trust for imported projects: their scripts are never evaluated (not even to read parameters) until the user allows it in a prompt, which is remembered per project.
 - Prefab instances can add components to a part or remove the prefab's components, on that instance only.
