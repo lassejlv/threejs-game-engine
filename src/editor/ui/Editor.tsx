@@ -24,6 +24,7 @@ import { BottomPanel } from './ProjectPanel'
 import { Hierarchy } from './Hierarchy'
 import { Icon } from './icons'
 import { Inspector } from './Inspector'
+import { Splitter, usePanelSizes } from './layout'
 import { ScriptEditor } from './ScriptEditor'
 import { Toolbar } from './Toolbar'
 import '../editor.css'
@@ -72,9 +73,10 @@ export function Editor() {
   }, [engine, view])
 
   useShortcuts()
+  const { sizes, update, style } = usePanelSizes()
 
   return (
-    <div className={`editor ${mode === 'play' ? 'is-playing' : ''}`}>
+    <div className={`editor ${mode === 'play' ? 'is-playing' : ''}`} style={style}>
       <Toolbar engine={engine} />
       <Hierarchy />
       <main className="viewport">
@@ -120,6 +122,9 @@ export function Editor() {
       </main>
       <Inspector />
       <BottomPanel />
+      <Splitter edge="right" size={sizes.left} onResize={(left) => update({ left })} label="Resize hierarchy" />
+      <Splitter edge="left" size={sizes.right} onResize={(right) => update({ right })} label="Resize inspector" />
+      <Splitter edge="top" size={sizes.bottom} onResize={(bottom) => update({ bottom })} label="Resize project panel" />
     </div>
   )
 }

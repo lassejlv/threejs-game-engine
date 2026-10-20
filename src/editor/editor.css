@@ -1,7 +1,7 @@
 .editor {
   display: grid;
-  grid-template-rows: 40px minmax(0, 1fr) 210px;
-  grid-template-columns: 240px minmax(0, 1fr) 310px;
+  grid-template-rows: 40px minmax(0, 1fr) var(--bottom, 210px);
+  grid-template-columns: var(--left, 240px) minmax(0, 1fr) var(--right, 310px);
   grid-template-areas:
     'toolbar toolbar toolbar'
     'hierarchy viewport inspector'
@@ -702,4 +702,106 @@
 }
 .script-loading {
   margin: 16px;
+}
+
+/* Resizable panels: handles overlap the shared panel edges. */
+.splitter {
+  z-index: 15;
+  background: transparent;
+  transition: background 0.12s;
+}
+.splitter:hover,
+.splitter:focus-visible,
+body.resizing .splitter:active {
+  background: var(--accent);
+  outline: none;
+}
+.splitter-right {
+  grid-area: hierarchy;
+  justify-self: end;
+  width: 5px;
+  margin-right: -3px;
+  cursor: col-resize;
+}
+.splitter-left {
+  grid-area: inspector;
+  justify-self: start;
+  width: 5px;
+  margin-left: -3px;
+  cursor: col-resize;
+}
+.splitter-top {
+  grid-area: bottom;
+  align-self: start;
+  height: 5px;
+  margin-top: -3px;
+  cursor: row-resize;
+}
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.resizing canvas {
+  pointer-events: none;
+}
+
+/* Asset tiles */
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+.asset-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: default;
+}
+.asset-tile:hover {
+  background: var(--bg-2);
+  border-color: var(--border);
+}
+.asset-thumb {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: #0f1216;
+  overflow: hidden;
+}
+.asset-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.asset-thumb .icon {
+  width: 26px;
+  height: 26px;
+}
+.asset-tile-name {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.asset-tile-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+  gap: 2px;
+}
+.asset-tile:hover .asset-tile-actions,
+.asset-tile:focus-within .asset-tile-actions {
+  display: flex;
+}
+.asset-tile-actions button {
+  padding: 1px 6px;
+  font-size: 11px;
+  background: rgba(20, 24, 30, 0.9);
 }

@@ -5,6 +5,7 @@ import { componentDefaults, createEntity } from '../document'
 import {
   addEntity,
   addPrefabInstance,
+  assetLibrary,
   createSceneAction,
   createScript,
   deleteAsset,
@@ -20,7 +21,8 @@ import {
   updateScene,
 } from '../editor'
 import { PREFAB_DRAG_TYPE } from './Hierarchy'
-import { ACCEPTED_ASSETS } from '../assetLibrary'
+import { useModelThumbnail } from './thumbnails'
+import { ACCEPTED_ASSETS, type AssetMeta } from '../assetLibrary'
 import { sceneView } from '../runtime/editScene'
 import { BUILTINS } from '../scripting'
 import { ConsolePanel } from './ConsolePanel'
@@ -238,42 +240,50 @@ function ProjectPanel() {
         {assets.length === 0 ? (
           <p className="empty">Drop .glb models, .png/.jpg textures or .mp3/.ogg/.wav audio here.</p>
         ) : (
-          <ul className="asset-list">
+          <div className="asset-grid">
             {assets.map((a) => (
-              <li key={a.id}>
-                <span className="asset">
-                  <Icon name={a.kind} className={`icon-${a.kind}`} />
-                  {a.name}
-                  <span className="dim">{formatSize(a.size)}</span>
-                </span>
-                {a.kind === 'model' && (
-                  <button
-                    type="button"
-                    disabled={playing}
-                    onClick={() =>
-                      addEntity(
-                        createEntity(a.name.replace(/\.\w+$/, ''), {
-                          transform: { position: sceneView.spawnPoint(), rotation: [0, 0, 0], scale: [1, 1, 1] },
-                          model: { ...componentDefaults.model(), asset: a.id },
-                        }),
-                      )
-                    }
-                  >
-                    Add to scene
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="icon-button"
-                  onClick={() => window.confirm(`Delete ${a.name}?`) && void deleteAsset(a.id)}
-                  aria-label={`Delete ${a.name}`}
-                >
-                  ×
-                </button>
-              </li>
+              <AssetTile key={a.id} asset={a} playing={playing} />
             ))}
-          </ul>
+          </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function AssetTile({ asset, playing }: { asset: AssetMeta; playing: boolean }) {
+  const modelThumb = useModelThumbnail(asset.kind === 'model' ? asset.id : null)
+  const image = asset.kind === 'texture' ? assetLibrary.url(asset.id) : modelThumb
+  const addModel = () =>
+    addEntity(
+      createEntity(asset.name.replace(/\.\w+$/, ''), {
+        transform: { position: sceneView.spawnPoint(), rotation: [0, 0, 0], scale: [1, 1, 1] },
+        model: { ...componentDefaults.model(), asset: asset.id },
+      }),
+    )
+  return (
+    <div
+      className="asset-tile"
+      title={`${asset.name} · ${formatSize(asset.size)}${asset.kind === 'model' ? ' · double-click to add' : ''}`}
+      onDoubleClick={() => asset.kind === 'model' && !playing && addModel()}
+    >
+      <div className="asset-thumb">
+        {image ? <img src={image} alt="" draggable={false} /> : <Icon name={asset.kind} className={`icon-${asset.kind}`} />}
+      </div>
+      <span className="asset-tile-name">{asset.name}</span>
+      <div className="asset-tile-actions">
+        {asset.kind === 'model' && (
+          <button type="button" disabled={playing} onClick={addModel} aria-label={`Add ${asset.name} to scene`}>
+            Add
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => window.confirm(`Delete ${asset.name}?`) && void deleteAsset(asset.id)}
+          aria-label={`Delete ${asset.name}`}
+        >
+          ×
+        </button>
       </div>
     </div>
   )
