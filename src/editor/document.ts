@@ -48,6 +48,16 @@ export interface ModelDoc {
   animation: string
   animationSpeed: number
   animationLoop: boolean
+  /** Simpler versions of the model, shown beyond each distance from the camera (static models). */
+  lods: ModelLodDoc[]
+  /** Hide the model beyond this distance; 0 = never. */
+  cullDistance: number
+}
+
+export interface ModelLodDoc {
+  /** Model asset id. */
+  asset: string | null
+  distance: number
 }
 
 export interface LightDoc {
@@ -99,12 +109,16 @@ export interface RigidBodyDoc {
 }
 
 export type EmitterShape = 'point' | 'sphere' | 'box'
+/** How a value moves from its start to its end setting over a particle's life. bump: start → end → start. */
+export type LifeCurve = 'linear' | 'easeIn' | 'easeOut' | 'smooth' | 'bump'
 
 export interface ParticlesDoc {
   /** Play mode: start emitting when the entity is created. Scripts can call play/stop/burst. */
   playOnStart: boolean
   /** Particles per second while emitting. */
   rate: number
+  /** Extra particles per meter the entity moves while emitting: trails behind moving objects. */
+  rateOverDistance: number
   /** Particles emitted at once each time the emitter starts. */
   burst: number
   /** Seconds the emitter runs before it stops; 0 = forever. */
@@ -134,6 +148,20 @@ export interface ParticlesDoc {
   endColor: string
   startOpacity: number
   endOpacity: number
+  sizeCurve: LifeCurve
+  opacityCurve: LifeCurve
+  /** Degrees per second each particle spins (direction and start angle are random). */
+  spin: number
+  /** Sprite sheet: the texture holds columns × rows frames. */
+  sheetColumns: number
+  sheetRows: number
+  /** life: play the frames once over each particle's life. random: one random frame per particle. */
+  sheetMode: 'life' | 'random'
+  /**
+   * Sub-emitter: instead of emitting on its own, emit `burst` particles wherever
+   * the parent entity's emitter births or kills a particle (sparks off fireworks).
+   */
+  trigger: 'none' | 'parentBirth' | 'parentDeath'
   /** Additive glows (fire, sparks, magic); normal suits smoke and dust. */
   blending: 'additive' | 'normal'
   /** Texture asset id; none draws soft round dots. */
@@ -302,6 +330,8 @@ export const componentDefaults = {
     animation: '',
     animationSpeed: 1,
     animationLoop: true,
+    lods: [],
+    cullDistance: 0,
   }),
   light: (): LightDoc => ({
     type: 'point',
@@ -318,6 +348,7 @@ export const componentDefaults = {
   particles: (): ParticlesDoc => ({
     playOnStart: true,
     rate: 20,
+    rateOverDistance: 0,
     burst: 0,
     duration: 0,
     maxParticles: 500,
@@ -336,6 +367,13 @@ export const componentDefaults = {
     endColor: '#ff5a2a',
     startOpacity: 1,
     endOpacity: 0,
+    sizeCurve: 'linear',
+    opacityCurve: 'linear',
+    spin: 0,
+    sheetColumns: 1,
+    sheetRows: 1,
+    sheetMode: 'life',
+    trigger: 'none',
     blending: 'additive',
     texture: null,
     worldSpace: true,

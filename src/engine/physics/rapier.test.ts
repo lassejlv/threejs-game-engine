@@ -84,4 +84,14 @@ describe('RapierPhysics', () => {
     expect(hit?.entity).toBe(wall.entity)
     expect(hit?.distance).toBeCloseTo(4.5, 1)
   })
+
+  it('applies an impulse to a body spawned this frame (before its first step)', async () => {
+    const { engine, physics, run } = await setup()
+    const ball = spawn(engine, [0, 5, 0])
+    engine.world.add(ball.entity, RigidBody, rigidBody(ball.object, { gravityScale: 0, mass: 1 }))
+    engine.world.add(ball.entity, Collider, sphereCollider(0.3))
+    physics.applyImpulse(ball.entity, new Vector3(0, 0, -5))
+    run(30)
+    expect(engine.world.get(ball.entity, RigidBody).position.z).toBeLessThan(-1)
+  })
 })

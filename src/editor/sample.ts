@@ -163,7 +163,28 @@ export function sampleProject(): ProjectDoc {
     rigidBody: { ...componentDefaults.rigidBody(), restitution: 0.6, mass: 1 },
     collider: { ...componentDefaults.collider(), shape: 'sphere' },
     scripts: [{ script: 'builtin:DestroyBelow', params: {} }],
-  })
+  }, [
+    // Particles per meter travelled: a trail that only shows while the ball moves.
+    (root) =>
+      createEntity('Trail', {
+        parent: root,
+        particles: particles({
+          rate: 0,
+          rateOverDistance: 14,
+          lifetime: 0.45,
+          randomness: 0.4,
+          shape: 'sphere',
+          radius: 0.25,
+          speed: 0.2,
+          spread: 180,
+          startSize: 0.35,
+          endSize: 0.05,
+          startColor: '#ffd0e2',
+          endColor: '#e05b8a',
+          sizeCurve: 'easeOut',
+        }),
+      }),
+  ])
   const portal = prefab('Portal', {
     transform: at([0, 1.6, 0], [0, 0, 0], [1.4, 1.4, 1.4]),
     mesh: mesh({ shape: 'torus', color: '#7a5cff', emissive: '#5a3cff', emissiveIntensity: 1.5, roughness: 0.3 }),

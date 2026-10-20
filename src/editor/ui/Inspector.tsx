@@ -336,6 +336,36 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
           )}
           <CheckField label="Cast shadow" value={entity.model.castShadow} onChange={(castShadow) => setComponent('model', { castShadow }, 'cs')} />
           <CheckField label="Receive shadow" value={entity.model.receiveShadow} onChange={(receiveShadow) => setComponent('model', { receiveShadow }, 'rs')} />
+          {entity.model.lods.map((level, index) => {
+            const setLevel = (patch: Partial<typeof level>, field: string) =>
+              setComponent('model', { lods: entity.model!.lods.map((l, i) => (i === index ? { ...l, ...patch } : l)) }, `lod${index}.${field}`)
+            return (
+              <div key={index} className="lod-level">
+                <AssetSelect kind="model" label={`LOD ${index + 1}`} value={level.asset} onChange={(asset) => setLevel({ asset }, 'asset')} />
+                <NumberField label="Beyond (m)" value={level.distance} step={1} min={0} onChange={(distance) => setLevel({ distance }, 'dist')} />
+                <Row label="">
+                  <button type="button" onClick={() => setComponent('model', { lods: entity.model!.lods.filter((_, i) => i !== index) }, 'lodrm')}>
+                    Remove LOD {index + 1}
+                  </button>
+                </Row>
+              </div>
+            )
+          })}
+          {entity.model.lods.length < 4 && (
+            <Row label="">
+              <button
+                type="button"
+                onClick={() => {
+                  const last = entity.model!.lods.at(-1)?.distance ?? 0
+                  setComponent('model', { lods: [...entity.model!.lods, { asset: null, distance: last + 25 }] }, 'lodadd')
+                }}
+              >
+                Add LOD level
+              </button>
+            </Row>
+          )}
+          <NumberField label="Cull distance (0 = off)" value={entity.model.cullDistance} step={5} min={0} onChange={(cullDistance) => setComponent('model', { cullDistance }, 'cull')} />
+          {entity.model.lods.length > 0 && <p className="hint">LOD levels swap in simpler models with distance. Animations play on the full model only.</p>}
         </Section>
       )}
 
@@ -490,6 +520,14 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
   )
 }
 
+const CURVES = [
+  ['linear', 'Linear'],
+  ['easeIn', 'Ease in'],
+  ['easeOut', 'Ease out'],
+  ['smooth', 'Smooth'],
+  ['bump', 'Up and back'],
+] as const
+
 function ParticlesSection({
   particles: p,
   set,
@@ -501,10 +539,25 @@ function ParticlesSection({
 }) {
   return (
     <Section title={COMPONENT_LABELS.particles} icon={<Icon name="particles" />} onRemove={onRemove}>
-      <CheckField label="Play on start" value={p.playOnStart} onChange={(playOnStart) => set({ playOnStart }, 'pos')} />
-      <NumberField label="Rate (/s)" value={p.rate} step={1} min={0} onChange={(rate) => set({ rate }, 'rate')} />
+      <SelectField
+        label="Emit"
+        value={p.trigger}
+        options={[['none', 'On its own'], ['parentBirth', 'When parent particles spawn'], ['parentDeath', 'When parent particles die']]}
+        onChange={(trigger) => set({ trigger }, 'trigger')}
+      />
+      {p.trigger === 'none' ? (
+        <>
+          <CheckField label="Play on start" value={p.playOnStart} onChange={(playOnStart) => set({ playOnStart }, 'pos')} />
+          <NumberField label="Rate (/s)" value={p.rate} step={1} min={0} onChange={(rate) => set({ rate }, 'rate')} />
+          <NumberField label="Rate (/meter)" value={p.rateOverDistance} step={1} min={0} onChange={(rateOverDistance) => set({ rateOverDistance }, 'rod')} />
+        </>
+      ) : (
+        <p className="hint">Sub-emitter: emits its Burst count wherever a particle of the nearest parent entity's emitter spawns or dies. Keep World space on.</p>
+      )}
       <NumberField label="Burst" value={p.burst} step={1} min={0} onChange={(burst) => set({ burst: Math.round(burst) }, 'burst')} />
-      <NumberField label="Duration (0 = ∞)" value={p.duration} step={0.1} min={0} onChange={(duration) => set({ duration }, 'dur')} />
+      {p.trigger === 'none' && (
+        <NumberField label="Duration (0 = ∞)" value={p.duration} step={0.1} min={0} onChange={(duration) => set({ duration }, 'dur')} />
+      )}
       <NumberField label="Max particles" value={p.maxParticles} step={10} min={1} max={20000} onChange={(maxParticles) => set({ maxParticles: Math.round(maxParticles) }, 'max')} />
       <SelectField
         label="Shape"
@@ -522,10 +575,13 @@ function ParticlesSection({
       <NumberField label="Drag" value={p.drag} step={0.05} min={0} onChange={(drag) => set({ drag }, 'drag')} />
       <NumberField label="Start size" value={p.startSize} step={0.01} min={0} onChange={(startSize) => set({ startSize }, 'ss')} />
       <NumberField label="End size" value={p.endSize} step={0.01} min={0} onChange={(endSize) => set({ endSize }, 'es')} />
+      <SelectField label="Size curve" value={p.sizeCurve} options={CURVES} onChange={(sizeCurve) => set({ sizeCurve }, 'scurve')} />
       <ColorField label="Start color" value={p.startColor} onChange={(startColor) => set({ startColor }, 'sc')} />
       <ColorField label="End color" value={p.endColor} onChange={(endColor) => set({ endColor }, 'ec')} />
       <NumberField label="Start opacity" value={p.startOpacity} step={0.05} min={0} max={1} onChange={(startOpacity) => set({ startOpacity }, 'so')} />
       <NumberField label="End opacity" value={p.endOpacity} step={0.05} min={0} max={1} onChange={(endOpacity) => set({ endOpacity }, 'eo')} />
+      <SelectField label="Opacity curve" value={p.opacityCurve} options={CURVES} onChange={(opacityCurve) => set({ opacityCurve }, 'ocurve')} />
+      <NumberField label="Spin (°/s)" value={p.spin} step={5} onChange={(spin) => set({ spin }, 'spin')} />
       <SelectField
         label="Blending"
         value={p.blending}
@@ -533,6 +589,15 @@ function ParticlesSection({
         onChange={(blending) => set({ blending }, 'blend')}
       />
       <TextureField value={p.texture} onChange={(texture) => set({ texture }, 'tex')} />
+      {p.texture && (
+        <>
+          <NumberField label="Sheet columns" value={p.sheetColumns} step={1} min={1} onChange={(v) => set({ sheetColumns: Math.max(1, Math.round(v)) }, 'scol')} />
+          <NumberField label="Sheet rows" value={p.sheetRows} step={1} min={1} onChange={(v) => set({ sheetRows: Math.max(1, Math.round(v)) }, 'srow')} />
+          {p.sheetColumns * p.sheetRows > 1 && (
+            <SelectField label="Sheet frames" value={p.sheetMode} options={[['life', 'Play over life'], ['random', 'Random frame']]} onChange={(sheetMode) => set({ sheetMode }, 'smode')} />
+          )}
+        </>
+      )}
       <CheckField label="World space" value={p.worldSpace} onChange={(worldSpace) => set({ worldSpace }, 'ws')} />
       <CheckField label="Auto destroy" value={p.destroyWhenDone} onChange={(destroyWhenDone) => set({ destroyWhenDone }, 'dwd')} />
       <p className="hint">

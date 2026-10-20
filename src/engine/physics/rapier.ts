@@ -139,6 +139,11 @@ export class RapierPhysics {
   }
 
   applyImpulse(entity: Entity, impulse: Vector3): void {
+    // Bodies are normally built at the next step; an impulse right after spawning needs it now.
+    if (this.pending.has(entity)) {
+      this.pending.delete(entity)
+      this.create(entity)
+    }
     const record = this.bodies.get(entity)
     if (!record || record.body.isKinematic()) return
     record.body.applyImpulse(impulse, true)

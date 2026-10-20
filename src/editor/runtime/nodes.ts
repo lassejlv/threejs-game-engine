@@ -13,12 +13,13 @@ import {
   HemisphereLight,
   Line,
   LineBasicMaterial,
+  LOD,
+  Object3D,
   LineSegments,
   type Material,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
-  type Object3D,
   OctahedronGeometry,
   PerspectiveCamera,
   PlaneGeometry,
@@ -33,6 +34,7 @@ import {
   FrontSide,
   RepeatWrapping,
   type Texture,
+  Vector3,
 } from 'three'
 import { createStore, type Engine } from '../../engine'
 import { log } from '../console'
@@ -70,6 +72,7 @@ function primitive(shape: Primitive): BufferGeometry {
   return g
 }
 
+const cameraPosition = new Vector3()
 const proxyGeometry = new OctahedronGeometry(0.25)
 const arrowGeometry = new BufferGeometry().setAttribute('position', new Float32BufferAttribute([0, 0, 0, 0, 0, -1.5], 3))
 const proxyColors = { light: 0xffd25a, camera: 0x7fd1ff, audio: 0xff8fb4, particles: 0xffa53a, empty: 0xb0b8c8 }
@@ -259,17 +262,31 @@ export class NodeFactory {
 
   /** Steps every live emitter. Run once per frame. */
   updateParticles(dt: number): void {
+    const live: ParticleEmitter[] = []
     for (const emitter of this.emitters) {
-      const parent = emitter.object.parent
       let root: Object3D = emitter.object
       while (root.parent) root = root.parent
       // Disposed, or its entity was destroyed (play mode removes the node from the scene).
-      if (emitter.disposed || !parent || root !== this.engine.scene) {
-        this.emitters.delete(emitter)
-        continue
+      if (emitter.disposed || !emitter.object.parent || root !== this.engine.scene) this.emitters.delete(emitter)
+      else live.push(emitter)
+    }
+    // Link sub-emitters to the closest ancestor entity with an emitter (visual → node → ancestors).
+    for (const emitter of live) emitter.subEmitters.length = 0
+    for (const emitter of live) {
+      if (!emitter.isSubEmitter) continue
+      for (let o = emitter.object.parent?.parent?.parent; o; o = o.parent) {
+        const owner = o.userData.particles as ParticleEmitter | undefined
+        if (owner && owner !== emitter) {
+          owner.subEmitters.push(emitter)
+          break
+        }
       }
+    }
+    this.engine.camera.getWorldPosition(cameraPosition)
+    for (const emitter of live) {
+      const parent = emitter.object.parent!
       parent.updateWorldMatrix(true, false)
-      emitter.update(dt, parent.matrixWorld)
+      emitter.update(dt, parent.matrixWorld, cameraPosition)
     }
   }
 
@@ -345,22 +362,43 @@ export class NodeFactory {
       log('warn', `${entity.name}: model asset is missing`)
       return
     }
+    // Distance-based detail levels: the full model up close, simpler assets further away, nothing past the cull distance.
+    const levels = model.lods.filter((l) => l.asset && l.distance > 0)
+    const lod = levels.length || model.cullDistance > 0 ? new LOD() : null
+    if (lod) {
+      visual.add(lod)
+      if (model.cullDistance > 0) lod.addLevel(new Object3D(), model.cullDistance)
+      for (const level of levels) {
+        const levelUrl = this.library.url(level.asset!)
+        if (!levelUrl) continue
+        void Promise.all([this.engine.assets.gltf(levelUrl), import('three/addons/utils/SkeletonUtils.js')])
+          .then(([gltf, { clone }]) => {
+            if (visual.parent) lod.addLevel(this.prepareModel(clone(gltf.scene), model), level.distance)
+          })
+          .catch((error: unknown) => log('error', `${entity.name}: failed to load LOD model`, error))
+      }
+    }
     void Promise.all([this.engine.assets.gltf(url), import('three/addons/utils/SkeletonUtils.js')])
       .then(([gltf, { clone }]) => {
         if (!visual.parent) return // rebuilt or removed while loading
-        const instance = clone(gltf.scene)
-        instance.traverse((o) => {
-          o.userData.fromAsset = true // geometry/materials belong to the cached glTF
-          o.castShadow = model.castShadow
-          o.receiveShadow = model.receiveShadow
-        })
-        visual.add(instance)
+        const instance = this.prepareModel(clone(gltf.scene), model)
+        if (lod) lod.addLevel(instance, 0)
+        else visual.add(instance)
         if (gltf.animations.length) {
           modelClips.set({ [model.asset!]: gltf.animations.map((c) => c.name) })
           animator?.attach(instance, gltf.animations)
         }
       })
       .catch((error: unknown) => log('error', `${entity.name}: failed to load model`, error))
+  }
+
+  private prepareModel(instance: Object3D, model: NonNullable<EntityDoc['model']>): Object3D {
+    instance.traverse((o) => {
+      o.userData.fromAsset = true // geometry/materials belong to the cached glTF
+      o.castShadow = model.castShadow
+      o.receiveShadow = model.receiveShadow
+    })
+    return instance
   }
 }
 

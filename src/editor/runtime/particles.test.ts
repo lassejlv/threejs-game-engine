@@ -2,7 +2,7 @@ import { Matrix4, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
 import { mulberry32 } from '../../engine'
 import { componentDefaults, type ParticlesDoc } from '../document'
-import { ParticleEmitter } from './particles'
+import { lifeCurve, ParticleEmitter } from './particles'
 
 const identity = new Matrix4()
 const config = (patch: Partial<ParticlesDoc> = {}): ParticlesDoc => ({ ...componentDefaults.particles(), ...patch })
@@ -133,5 +133,74 @@ describe('ParticleEmitter', () => {
       replayed = Math.max(replayed, e.count)
     }
     expect(replayed).toBe(5)
+  })
+
+  it('emits per meter moved for trails, spread along the path', () => {
+    const e = emitter({ rate: 0, rateOverDistance: 10, duration: 5, lifetime: 10, speed: 0, randomness: 0 })
+    e.play()
+    e.update(1 / 60, new Matrix4())
+    e.update(1 / 60, new Matrix4().makeTranslation(2, 0, 0))
+    expect(e.count).toBe(20)
+    const offset = e.object.geometry.getAttribute('offset')
+    const xs = Array.from({ length: e.count }, (_, i) => offset.getX(i))
+    expect(Math.min(...xs)).toBeLessThan(1)
+    expect(Math.max(...xs)).toBeGreaterThan(1)
+  })
+
+  it('fires sub-emitters where parent particles die', () => {
+    const parent = emitter({ rate: 0, burst: 3, lifetime: 0.1, randomness: 0, speed: 0 })
+    const sub = emitter({ trigger: 'parentDeath', burst: 4, lifetime: 10, speed: 0 })
+    parent.subEmitters.push(sub)
+    const frame = new Matrix4().makeTranslation(0, 5, 0)
+    parent.play()
+    sub.play() // ignored: sub-emitters only emit when triggered
+    for (let i = 0; i < 12; i++) {
+      parent.update(1 / 60, frame)
+      sub.update(1 / 60, identity)
+    }
+    expect(parent.count).toBe(0)
+    expect(sub.count).toBe(12)
+    expect(new Vector3().fromBufferAttribute(sub.object.geometry.getAttribute('offset'), 0).y).toBeCloseTo(5)
+  })
+
+  it('shapes size and opacity with life curves', () => {
+    expect(lifeCurve('linear', 0.5)).toBe(0.5)
+    expect(lifeCurve('easeIn', 0.5)).toBe(0.25)
+    expect(lifeCurve('easeOut', 0.5)).toBe(0.75)
+    expect(lifeCurve('bump', 0)).toBe(0)
+    expect(lifeCurve('bump', 0.5)).toBeCloseTo(1)
+    const e = emitter({ rate: 0, burst: 1, lifetime: 1, randomness: 0, speed: 0, opacityCurve: 'bump', startOpacity: 0, endOpacity: 1 })
+    e.play()
+    e.update(1e-6, identity)
+    run(e, 0.5)
+    expect(e.object.geometry.getAttribute('color').getW(0)).toBeCloseTo(1, 1)
+  })
+
+  it('draws far particles first with normal blending', () => {
+    const e = emitter({ rate: 0, burst: 50, lifetime: 10, speed: 5, spread: 180, blending: 'normal' })
+    e.play()
+    e.update(1e-6, identity)
+    const eye = new Vector3(0, 0, 20)
+    e.update(0.2, identity, eye)
+    const offset = e.object.geometry.getAttribute('offset')
+    const p = new Vector3()
+    let previous = Infinity
+    for (let i = 0; i < e.count; i++) {
+      const d = p.fromBufferAttribute(offset, i).distanceTo(eye)
+      expect(d).toBeLessThanOrEqual(previous + 1e-6)
+      previous = d
+    }
+  })
+
+  it('animates sprite-sheet frames over life and spins particles', () => {
+    const e = emitter({ rate: 0, burst: 1, lifetime: 1, randomness: 0, speed: 0, sheetColumns: 2, sheetRows: 2, spin: 90 })
+    e.play()
+    e.update(1e-6, identity)
+    const geometry = e.object.geometry
+    expect(geometry.getAttribute('frame').getX(0)).toBe(0)
+    const angle0 = geometry.getAttribute('angle').getX(0)
+    run(e, 0.8)
+    expect(geometry.getAttribute('frame').getX(0)).toBe(3)
+    expect(Math.abs(geometry.getAttribute('angle').getX(0) - angle0)).toBeCloseTo((0.8 * Math.PI) / 2, 1)
   })
 })
