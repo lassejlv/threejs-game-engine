@@ -70,11 +70,14 @@ async function moveWith(page, key, mover) {
   const where = () => page.evaluate((name) => window.__game.engine.scene.getObjectByName(name)?.position.toArray(), mover)
   const from = await where()
   assert(from, `the game has an object named ${mover}`)
+  await page.bringToFront()
   await page.keyboard.down(key)
   let moved = 0
   const deadline = Date.now() + 30_000
-  while (Date.now() < deadline && moved < 0.5) {
+  for (let tick = 1; Date.now() < deadline && moved < 0.5; tick++) {
     await page.waitForTimeout(200)
+    // Auto-repeat, as a held key does: a late window blur (WebKit, on a new page) releases every key.
+    if (tick % 5 === 0) await page.keyboard.down(key)
     const now = await where()
     moved = Math.hypot(now[0] - from[0], now[1] - from[1], now[2] - from[2])
   }

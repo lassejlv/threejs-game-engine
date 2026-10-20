@@ -22,6 +22,7 @@ The first stable release: projects are stored locally and durably, exported game
 - Navigation agents steer around moving (dynamic and kinematic) bodies, re-planning when one moves into or out of the way; the navigation debug view leaves out the cells they cover.
 
 ### Fixed
+- A key held while the window lost and regained focus stayed released until pressed again; the next auto-repeat now picks it back up.
 - Without WebGL (hardware acceleration off, no driver), the editor showed an empty viewport and exported games a blank page; both now explain what is wrong, and the editor stays usable.
 - Dropdown menus near a panel edge (Screen UI, Create) were cut off and inherited their header's styling.
 

@@ -240,7 +240,8 @@ export class Input {
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (isTyping(e.target)) return
     if (PREVENT_DEFAULT.has(e.code)) e.preventDefault()
-    if (!e.repeat) this.press(e.code)
+    // A repeat for a key we don't think is down: it was held through a blur (which released everything).
+    if (!e.repeat || !this.down.has(e.code)) this.press(e.code)
   }
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
