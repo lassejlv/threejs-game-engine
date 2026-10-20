@@ -22,15 +22,19 @@ export type { LoadProgress } from './assets/Assets'
 
 export {
   boxCollider,
+  capsuleCollider,
   Collider,
+  cylinderCollider,
   RigidBody,
   rigidBody,
   sphereCollider,
   teleport,
   Transform,
 } from './components'
-export type { ColliderData, RigidBodyData } from './components'
+export type { ColliderData, ColliderShape, RigidBodyData } from './components'
 export { createCollisionSystem, createInterpolationSystem, createPhysicsSystem } from './physics/systems'
+export { loadRapier, RapierPhysics } from './physics/rapier'
+export type { RaycastHit, RaycastOptions } from './physics/rapier'
 
 export { damp, dampAngle, moveTowards, mulberry32 } from './utils/math'
 export { disposeObject } from './utils/dispose'

@@ -178,25 +178,55 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
 
       {entity.rigidBody && (
         <Section title={COMPONENT_LABELS.rigidBody} icon={<Icon name="body" />} onRemove={() => removeComponent('rigidBody')}>
-          <CheckField label="Kinematic" value={entity.rigidBody.kinematic} onChange={(kinematic) => setComponent('rigidBody', { kinematic }, 'kin')} />
-          <NumberField label="Gravity scale" value={entity.rigidBody.gravityScale} step={0.05} onChange={(gravityScale) => setComponent('rigidBody', { gravityScale }, 'gs')} />
-          <NumberField label="Damping" value={entity.rigidBody.damping} step={0.05} min={0} onChange={(damping) => setComponent('rigidBody', { damping }, 'damp')} />
-          <NumberField label="Bounciness" value={entity.rigidBody.restitution} step={0.05} min={0} max={1} onChange={(restitution) => setComponent('rigidBody', { restitution }, 'rest')} />
-          {entity.parent && <p className="hint">Rigid bodies simulate in world space and are detached from their parent in play mode.</p>}
+          <SelectField
+            label="Type"
+            value={entity.rigidBody.type}
+            options={[['dynamic', 'Dynamic'], ['kinematic', 'Kinematic'], ['character', 'Character']]}
+            onChange={(type) => setComponent('rigidBody', { type }, 'type')}
+          />
+          {entity.rigidBody.type === 'dynamic' && (
+            <>
+              <NumberField label="Mass (0 = auto)" value={entity.rigidBody.mass} step={0.1} min={0} onChange={(mass) => setComponent('rigidBody', { mass }, 'mass')} />
+              <CheckField label="Lock rotation" value={entity.rigidBody.lockRotation} onChange={(lockRotation) => setComponent('rigidBody', { lockRotation }, 'lock')} />
+              <NumberField label="Damping" value={entity.rigidBody.damping} step={0.05} min={0} onChange={(damping) => setComponent('rigidBody', { damping }, 'damp')} />
+              <NumberField label="Bounciness" value={entity.rigidBody.restitution} step={0.05} min={0} max={1} onChange={(restitution) => setComponent('rigidBody', { restitution }, 'rest')} />
+            </>
+          )}
+          {entity.rigidBody.type !== 'kinematic' && (
+            <NumberField label="Gravity scale" value={entity.rigidBody.gravityScale} step={0.05} onChange={(gravityScale) => setComponent('rigidBody', { gravityScale }, 'gs')} />
+          )}
+          <p className="hint">
+            {entity.rigidBody.type === 'character'
+              ? 'Moved by setting velocity; climbs steps and slopes up to 50°. Pair with a capsule collider.'
+              : entity.rigidBody.type === 'kinematic'
+                ? 'Moved by scripts (position or velocity); pushes dynamic bodies but is never pushed.'
+                : 'Simulated by physics. Needs a collider.'}
+            {entity.parent && ' Detached from its parent in play mode.'}
+          </p>
         </Section>
       )}
 
       {entity.collider && (
         <Section title={COMPONENT_LABELS.collider} icon={<Icon name="collider" />} onRemove={() => removeComponent('collider')}>
-          <SelectField label="Shape" value={entity.collider.shape} options={[['box', 'Box'], ['sphere', 'Sphere']]} onChange={(shape) => setComponent('collider', { shape }, 'shape')} />
-          {entity.collider.shape === 'box' ? (
+          <SelectField
+            label="Shape"
+            value={entity.collider.shape}
+            options={[['box', 'Box'], ['sphere', 'Sphere'], ['capsule', 'Capsule'], ['cylinder', 'Cylinder']]}
+            onChange={(shape) => setComponent('collider', { shape }, 'shape')}
+          />
+          {entity.collider.shape === 'box' && (
             <Vec3Field label="Size" value={entity.collider.size} step={0.05} onChange={(size) => setComponent('collider', { size }, 'size')} />
-          ) : (
+          )}
+          {entity.collider.shape !== 'box' && (
             <NumberField label="Radius" value={entity.collider.radius} step={0.05} min={0} onChange={(radius) => setComponent('collider', { radius }, 'radius')} />
           )}
+          {(entity.collider.shape === 'capsule' || entity.collider.shape === 'cylinder') && (
+            <NumberField label="Height" value={entity.collider.height} step={0.05} min={0} onChange={(height) => setComponent('collider', { height }, 'height')} />
+          )}
           <Vec3Field label="Center" value={entity.collider.center} step={0.05} onChange={(center) => setComponent('collider', { center }, 'center')} />
+          <NumberField label="Friction" value={entity.collider.friction} step={0.05} min={0} onChange={(friction) => setComponent('collider', { friction }, 'fric')} />
           <CheckField label="Is trigger" value={entity.collider.trigger} onChange={(trigger) => setComponent('collider', { trigger }, 'trig')} />
-          <p className="hint">Sizes are scaled by the transform. Colliders are axis-aligned (rotation is ignored).</p>
+          <p className="hint">Sizes are multiplied by the transform scale.</p>
         </Section>
       )}
 

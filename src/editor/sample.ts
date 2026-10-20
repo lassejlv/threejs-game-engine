@@ -62,6 +62,7 @@ export function sampleProject(): ProjectDoc {
     const x = (random() - 0.5) * 50
     const z = (random() - 0.5) * 50
     if (Math.hypot(x, z) < 6) continue
+    if (x > -3 && x < 15 && z > -25 && z < -12) continue // keep the physics playground clear
     const h = 0.6 + random() * 2
     block(`Block ${i + 1}`, [2 + random() * 3, h, 2 + random() * 3], [x, h / 2, z], '#c9c2b4', blocks.id)
     coinSpots.push([x, h + 1, z])
@@ -70,6 +71,41 @@ export function sampleProject(): ProjectDoc {
     const angle = (i / 10) * Math.PI * 2
     coinSpots.push([Math.cos(angle) * 6, 1, Math.sin(angle) * 6])
   }
+
+  // Physics playground: a ramp up to a ledge, a crate stack and a ball.
+  const playground = add(createEntity('Playground', { parent: level.id, transform: { position: [4, 0, -20], rotation: [0, 0, 0], scale: [1, 1, 1] } }))
+  add(
+    createEntity('Ramp', {
+      parent: playground.id,
+      transform: { position: [0, 1.2, 0], rotation: [0, 0, 22], scale: [7, 0.4, 3] },
+      mesh: mesh({ color: '#8e9bb0', roughness: 0.8 }),
+      collider: componentDefaults.collider(),
+    }),
+  )
+  block('Ledge', [4, 2.6, 3], [5.2, 1.3, 0], '#c9c2b4', playground.id)
+  coinSpots.push([9.2, 3.6, -20])
+  for (let i = 0; i < 6; i++) {
+    const row = i < 3 ? 0 : i < 5 ? 1 : 2
+    const col = i < 3 ? i : i < 5 ? i - 3 + 0.5 : 1
+    add(
+      createEntity(`Crate ${i + 1}`, {
+        parent: playground.id,
+        transform: { position: [4 + col * 1.05, 0.5 + row * 1.0, 4], rotation: [0, 0, 0], scale: [1, 1, 1] },
+        mesh: mesh({ color: '#b07a45', roughness: 0.9 }),
+        rigidBody: { ...componentDefaults.rigidBody(), mass: 2 },
+        collider: componentDefaults.collider(),
+      }),
+    )
+  }
+  add(
+    createEntity('Ball', {
+      parent: playground.id,
+      transform: { position: [0, 4, -4], rotation: [0, 0, 0], scale: [1.2, 1.2, 1.2] },
+      mesh: mesh({ shape: 'sphere', color: '#e05b8a', roughness: 0.4 }),
+      rigidBody: { ...componentDefaults.rigidBody(), restitution: 0.6, mass: 1 },
+      collider: { ...componentDefaults.collider(), shape: 'sphere' },
+    }),
+  )
 
   const coins = add(createEntity('Coins'))
   coinSpots.forEach((at, i) =>
@@ -92,8 +128,8 @@ export function sampleProject(): ProjectDoc {
     createEntity('Player', {
       transform: { position: [0, 1.5, 0], rotation: [0, 0, 0], scale: [0.8, 0.9, 0.8] },
       mesh: mesh({ shape: 'capsule', color: '#3d7bd9', roughness: 0.5 }),
-      rigidBody: componentDefaults.rigidBody(),
-      collider: { ...componentDefaults.collider(), size: [1, 2, 1] },
+      rigidBody: { ...componentDefaults.rigidBody(), type: 'character' },
+      collider: { ...componentDefaults.collider(), shape: 'capsule', radius: 0.5, height: 2 },
       scripts: [{ script: 'builtin:PlayerController', params: {} }],
     }),
   )

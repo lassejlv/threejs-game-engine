@@ -57,20 +57,32 @@ export interface CameraDoc {
   main: boolean
 }
 
+export type BodyType = 'dynamic' | 'kinematic' | 'character'
+
 export interface RigidBodyDoc {
-  kinematic: boolean
+  /** dynamic: simulated. kinematic: moved by scripts. character: walks with slopes/steps (for players, NPCs). */
+  type: BodyType
+  /** kg; 0 = derived from collider volume. */
+  mass: number
+  lockRotation: boolean
   gravityScale: number
   damping: number
   restitution: number
 }
 
+export type ColliderShapeDoc = 'box' | 'sphere' | 'capsule' | 'cylinder'
+
 export interface ColliderDoc {
-  shape: 'box' | 'sphere'
+  shape: ColliderShapeDoc
   /** Box size in local units (multiplied by the entity's world scale). */
   size: Vec3
+  /** Sphere/capsule/cylinder radius. */
   radius: number
+  /** Capsule/cylinder total height. */
+  height: number
   center: Vec3
   trigger: boolean
+  friction: number
 }
 
 export interface ScriptRefDoc {
@@ -132,14 +144,14 @@ export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   collider: 'Collider',
 }
 
-export const PRIMITIVE_COLLIDER: Record<Primitive, Pick<ColliderDoc, 'shape' | 'size' | 'radius'>> = {
-  box: { shape: 'box', size: [1, 1, 1], radius: 0.5 },
-  sphere: { shape: 'sphere', size: [1, 1, 1], radius: 0.5 },
-  cylinder: { shape: 'box', size: [1, 1, 1], radius: 0.5 },
-  capsule: { shape: 'box', size: [1, 2, 1], radius: 0.5 },
-  plane: { shape: 'box', size: [1, 0.02, 1], radius: 0.5 },
-  cone: { shape: 'box', size: [1, 1, 1], radius: 0.5 },
-  torus: { shape: 'box', size: [1.1, 0.3, 1.1], radius: 0.55 },
+export const PRIMITIVE_COLLIDER: Record<Primitive, Pick<ColliderDoc, 'shape' | 'size' | 'radius' | 'height'>> = {
+  box: { shape: 'box', size: [1, 1, 1], radius: 0.5, height: 1 },
+  sphere: { shape: 'sphere', size: [1, 1, 1], radius: 0.5, height: 1 },
+  cylinder: { shape: 'cylinder', size: [1, 1, 1], radius: 0.5, height: 1 },
+  capsule: { shape: 'capsule', size: [1, 2, 1], radius: 0.5, height: 2 },
+  plane: { shape: 'box', size: [1, 0.02, 1], radius: 0.5, height: 1 },
+  cone: { shape: 'cylinder', size: [1, 1, 1], radius: 0.35, height: 1 },
+  torus: { shape: 'box', size: [1.1, 0.3, 1.1], radius: 0.55, height: 0.3 },
 }
 
 export const componentDefaults = {
@@ -166,8 +178,23 @@ export const componentDefaults = {
     shadowArea: 40,
   }),
   camera: (): CameraDoc => ({ fov: 60, near: 0.1, far: 1000, main: true }),
-  rigidBody: (): RigidBodyDoc => ({ kinematic: false, gravityScale: 1, damping: 0, restitution: 0 }),
-  collider: (): ColliderDoc => ({ shape: 'box', size: [1, 1, 1], radius: 0.5, center: [0, 0, 0], trigger: false }),
+  rigidBody: (): RigidBodyDoc => ({
+    type: 'dynamic',
+    mass: 0,
+    lockRotation: false,
+    gravityScale: 1,
+    damping: 0,
+    restitution: 0,
+  }),
+  collider: (): ColliderDoc => ({
+    shape: 'box',
+    size: [1, 1, 1],
+    radius: 0.5,
+    height: 1,
+    center: [0, 0, 0],
+    trigger: false,
+    friction: 0.5,
+  }),
 } satisfies { [K in ComponentKey]: () => NonNullable<EntityDoc[K]> }
 
 export function defaultCollider(entity: EntityDoc): ColliderDoc {
@@ -277,7 +304,19 @@ export function parseProject(json: unknown): ProjectDoc {
     version: 1,
     name: doc.name ?? 'Untitled',
     settings: { ...defaultSettings(), ...doc.settings },
-    entities: doc.entities.map((e) => ({ ...createEntity(e.name ?? 'Entity'), ...e, scripts: e.scripts ?? [] })),
+    entities: doc.entities.map(migrateEntity),
     scripts: doc.scripts ?? [],
   }
+}
+
+/** Fills fields added after a file was saved. */
+function migrateEntity(raw: EntityDoc): EntityDoc {
+  const e: EntityDoc = { ...createEntity(raw.name ?? 'Entity'), ...raw, scripts: raw.scripts ?? [] }
+  if (e.rigidBody) {
+    const legacy = e.rigidBody as Partial<RigidBodyDoc> & { kinematic?: boolean }
+    const { kinematic, ...rest } = legacy
+    e.rigidBody = { ...componentDefaults.rigidBody(), type: kinematic ? 'kinematic' : 'dynamic', ...rest }
+  }
+  if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
+  return e
 }

@@ -1,7 +1,7 @@
-import { createStore, defineComponent, type Engine, type Entity, type System } from '../../engine'
+import { createStore, defineComponent, type Engine, type Entity, type RapierPhysics, type System } from '../../engine'
 import { log } from '../console'
 import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
-import { type Behavior, type Handle, type HudApi, resolveBehavior, type ScriptContext } from '../scripting'
+import { type Behavior, type Handle, type HudApi, type PhysicsApi, resolveBehavior, type ScriptContext } from '../scripting'
 
 export const hudStore = createStore({
   values: {} as Record<string, string | number>,
@@ -38,6 +38,7 @@ export class PlaySession {
   constructor(
     private readonly engine: Engine,
     private readonly doc: ProjectDoc,
+    private readonly rapier: RapierPhysics,
   ) {
     hudStore.set({ values: {}, message: null })
   }
@@ -93,6 +94,17 @@ export class PlaySession {
     const params: Record<string, ParamValue> = {}
     for (const key in behavior.params) params[key] = key in overrides ? overrides[key] : behavior.params[key]
     const prefix = `[${handle.name}]`
+    const physics: PhysicsApi = {
+      raycast: (origin, direction, maxDistance, options = {}) => {
+        const hit = this.rapier.raycast(origin, direction, maxDistance, {
+          exclude: options.ignoreSelf === false ? undefined : handle.entity,
+          triggers: options.triggers,
+        })
+        const target = hit && this.handles.get(hit.entity)
+        return hit && target ? { handle: target, point: hit.point, normal: hit.normal, distance: hit.distance } : null
+      },
+      applyImpulse: (target, impulse) => this.rapier.applyImpulse(target.entity, impulse),
+    }
     return {
       ...handle,
       params,
@@ -102,6 +114,7 @@ export class PlaySession {
       state: {},
       globals: this.globals,
       hud: this.hud,
+      physics,
       find: (name) => {
         const entity = this.byName.get(name)?.find((e) => this.engine.world.isAlive(e))
         return entity === undefined ? undefined : this.handles.get(entity)

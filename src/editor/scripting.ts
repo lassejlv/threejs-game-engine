@@ -18,6 +18,25 @@ export interface HudApi {
   message(text: string | null): void
 }
 
+export interface PhysicsHit {
+  handle: Handle
+  point: THREE.Vector3
+  normal: THREE.Vector3
+  distance: number
+}
+
+export interface PhysicsApi {
+  /** Casts a ray (ignores the caster and triggers by default). */
+  raycast(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    maxDistance?: number,
+    options?: { triggers?: boolean; ignoreSelf?: boolean },
+  ): PhysicsHit | null
+  /** Instant velocity change scaled by mass (dynamic bodies only). */
+  applyImpulse(target: Handle, impulse: THREE.Vector3): void
+}
+
 export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly params: P
   readonly engine: Engine
@@ -28,6 +47,7 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   /** Shared by every script in this play session. */
   readonly globals: Record<string, unknown>
   readonly hud: HudApi
+  readonly physics: PhysicsApi
   find(name: string): Handle | undefined
   destroy(target?: Handle): void
   log(...args: unknown[]): void
