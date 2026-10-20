@@ -5,8 +5,10 @@ It is built with TypeScript, React 19, Vite 8, three.js r186 and Rapier physics.
 
 ```bash
 npm install
-npm run dev        # opens the editor at http://localhost:5173 (builds the game player first)
-npm test           # unit tests (engine, physics, navigation, document, editor, scripting, runtime)
+npm run dev        # opens the editor at http://localhost:5173 (builds the game player first, starts the file server with Bun)
+npm start          # serves a built editor and the file server together on http://127.0.0.1:5174 (after npm run build)
+npm test           # unit tests (engine, physics, navigation, document, editor, scripting, runtime, storage)
+npm run test:server  # file server tests (Bun)
 npm run test:e2e   # browser smoke test: loads the editor, plays, collects a coin
 npm run build      # typecheck + production build of the editor
 ```
@@ -22,7 +24,7 @@ In play mode: WASD moves, Space jumps, Shift sprints, E throws a ball, drag the 
 
 | Area      | What it does |
 | --------- | ------------ |
-| Toolbar   | File (new, new from template, open, export JSON, Project Settings), undo/redo, move/rotate/scale tools, snapping, Create, Play / Pause / Step, and Build (run, download `.html`, download installable web app `.zip`) |
+| Toolbar   | File (new project from a template, open/duplicate/delete projects, import, export .zip or .json, Project Settings), save status, undo/redo, move/rotate/scale tools, snapping, Create, Play / Pause / Step, and Build (run, download `.html`, download installable web app `.zip`) |
 | Hierarchy | Screen UI elements, then the entity tree. Search by name or component (`t:light`, `t:script`, `t:collider`…). Shift/Ctrl/Cmd-click selects several entities, double-click renames, drag reparents, and the prefab button turns the selection into a prefab |
 | Viewport  | **Scene** tab: orbit camera (or a flat side view with the **2D** toggle), gizmos (they move every selected entity), click to select, collider outlines and draggable collider handles. **Game** tab: the view through the main camera, where screen UI is laid out by dragging. Play switches to Game automatically. The Colliders toggle also draws physics shapes, joints and the navigation grid while playing |
 | Inspector | Transform and components, plus Add Component. Edits apply to every selected entity that has the field. Prefab instances can override any field of any part of their prefab. With nothing selected it shows scene settings. While playing, a **Live** panel shows the selected entity's runtime state and lets you tweak it |
@@ -32,7 +34,22 @@ In play mode: WASD moves, Space jumps, Shift sprints, E throws a ball, drag the 
 
 Panels can be resized by dragging their edges. Shortcuts: `W` `E` `R` pick the tool, `F` focuses the selection, `Del` deletes, `Ctrl/Cmd+D` duplicates, `Ctrl/Cmd+C` / `V` copy and paste, `Ctrl/Cmd+Z` / `Shift+Z` undo and redo, `Ctrl/Cmd+P` plays and stops, and `` ` `` toggles the stats panel.
 
-The project autosaves to localStorage. Assets (.glb models, .png/.jpg/.webp textures, .mp3/.ogg/.wav audio) are stored in IndexedDB.
+### Projects are local files
+
+The engine is local-first: there is no account and no cloud. With [Bun](https://bun.sh) installed, `npm run dev` also starts a small file server (`server/files.ts`), and every project is a plain folder:
+
+```
+projects/coin-rush/
+  project.json   # the document (readable, diff-friendly JSON)
+  assets.json    # asset names and kinds
+  assets/        # .glb models, .png/.jpg/.webp textures, .mp3/.ogg/.wav audio
+```
+
+Back up, copy or version that folder like any other files (`projects/` is git-ignored here; set `GE_PROJECTS_DIR` to keep projects elsewhere). Deleted projects move to `projects/.trash/`. Without Bun the editor keeps projects in the browser (IndexedDB) instead; the toolbar always shows where the open project is saved, and a banner appears if saving ever fails.
+
+The file server only listens on 127.0.0.1 and only accepts requests from the editor itself: other websites and DNS-rebinding tricks are refused, and no path can leave the projects folder.
+
+Every edit autosaves. **File → Export project** writes a `.zip` bundle (the same layout as a project folder, assets included) to share or move a project; **Import** accepts a bundle or a `.json` and always creates a new project. Project files carry a format version (currently 3): older files are migrated when opened, broken ones are refused with a message saying what and where, and files from a newer editor are refused rather than misread.
 
 **Project Settings** (File menu): project name, start scene, renderer and export options; input actions and axes (record keys by pressing them) and touch controls; and 16 named physics layers with a collision matrix.
 

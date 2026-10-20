@@ -73,20 +73,20 @@ projects/
 
 ## Roadmap
 
-### Phase 1: projects never get lost
+### Phase 1: projects never get lost ✅
 
 **Outcome:** projects are stored durably, several can coexist, failures are visible, and any project can be backed up and moved with its assets.
 
 **Why now:** every later phase assumes users trust the editor with their work. The current storage (one ~5 MB localStorage key, one global asset store, warn-only failures) caps project size and mixes projects' assets.
 
 **Scope**
-- [ ] The local Bun file server and a storage interface with two backends (the starting milestone above).
-- [ ] Support several projects: a project list (open, rename, duplicate, delete) on both backends, with assets owned per project instead of the shared `ge-assets` store.
-- [ ] Project bundles for sharing and for the hosted editor: export and import a `.zip` of `project.json` plus `assets/`, using the existing tested writer in `src/editor/zip.ts` (needs an unzip counterpart). The bundle uses the same layout as a project folder on disk.
-- [ ] Browser-only fallback: move the autosaved document from `localStorage` to IndexedDB, migrating the existing `ge-project-v1` value on first run.
-- [ ] Show save status in the toolbar (backend, saved/saving/failed) and an explicit banner when a save fails.
-- [ ] Give the file format explicit versions: bump to v3 for the storage change, write named migration steps, and keep golden fixtures of v1, v2 and v3 files in tests.
-- [ ] Validate imported projects with readable errors (which scene or entity is broken) instead of a crash later.
+- [x] The local Bun file server and a storage interface with two backends (the starting milestone above).
+- [x] Support several projects: a project list (open, duplicate, delete; rename through the project name) on both backends, with assets owned per project instead of the shared `ge-assets` store.
+- [x] Project bundles for sharing and backups: export and import a `.zip` of `project.json` plus `assets/`, using the existing tested writer in `src/editor/zip.ts` (needs an unzip counterpart). The bundle uses the same layout as a project folder on disk.
+- [x] Browser-only fallback: move the autosaved document from `localStorage` to IndexedDB, migrating the existing `ge-project-v1` value on first run.
+- [x] Show save status in the toolbar (backend, saved/saving/failed) and an explicit banner when a save fails.
+- [x] Give the file format explicit versions: bump to v3 for the storage change, write named migration steps, and keep golden fixtures of v1, v2 and v3 files in tests.
+- [x] Validate imported projects with readable errors (which scene or entity is broken) instead of a crash later.
 
 **Dependencies**
 - None outside the repo. The asset-ownership change touches `src/editor/assetLibrary.ts`, `exportGame.ts` (asset collection) and the thumbnails.
@@ -217,12 +217,16 @@ projects/
 - **Player size:** Rapier's WASM dominates load time on slow networks. Any fix (lazy physics, streaming compile) must keep the single-file export working offline.
 - **Three.js upgrades:** WebGPU needed a browser compatibility shim (`src/engine/render/webgpuCompat.ts`). Pin three.js versions and run the export tests before upgrading.
 
+## Decisions made
+
+- **License:** MIT (`LICENSE`).
+- **Local-first, no hosting:** projects are stored locally. Nothing is hosted for now; `npm start` serves a built editor and the file server together on `127.0.0.1`.
+- **File server:** `npm run dev` starts it automatically when Bun is installed. Projects live in `projects/` inside the checkout (git-ignored), or wherever `GE_PROJECTS_DIR` points.
+- **Run in new tab** stays a blob URL; serving built games from disk adds nothing while everything is local.
+- **Multiplayer and cloud save:** out of scope.
+
 ## Open questions
 
-- Should `npm run dev` start the Bun file server automatically, or should it stay a separate `bun run server` step? Where should `projects/` live by default: inside the repo (and git-ignored), or a user folder such as `~/GameEngineProjects`?
-- Should the local server also host built games (Build → Run in new tab served from disk instead of a blob URL)?
-- Which license should the engine use (MIT, Apache-2.0, or something else)?
-- Where should the public editor be hosted, and on which domain?
 - Is play-mode sandboxing (separate origin) worth its cost, or is a trust prompt enough for the intended users?
 - Which browsers and devices must be supported at 1.0? For example, Safari on iOS and low-end Android.
 - Should a 1.x release promise only that projects keep opening, or also that the script API is stable?
