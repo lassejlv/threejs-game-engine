@@ -43,6 +43,8 @@ export interface UiApi {
   button(id: string, label: string, onClick: () => void, style?: UiStyle): void
   /** Progress/health bar; `value` is 0..1. */
   bar(id: string, value: number, style?: BarStyle): void
+  /** An image (URL) on screen; `width` sets its size. */
+  image(id: string, url: string, style?: UiStyle): void
   /** Text that follows an entity in the world (name tags, damage numbers). */
   label(id: string, text: string | number, target: Handle, style?: LabelStyle): void
   remove(id: string): void
@@ -160,6 +162,12 @@ export class GameUi {
       if (style.fill) fill.style.background = style.fill
       place(el, style, 'top-left')
     },
+    image: (id, url, style = {}) => {
+      const el = this.element(id, 'img', 'gu-el') as HTMLImageElement
+      if (el.getAttribute('src') !== url) el.src = url
+      el.draggable = false
+      place(el, { background: 'none', width: 96, ...style }, 'top-left')
+    },
     label: (id, text, target, style = {}) => {
       let entry = this.labels.get(id)
       if (!entry) {
@@ -217,6 +225,11 @@ export class GameUi {
       this.root.appendChild(this.messageEl)
     }
     this.messageEl.textContent = text
+  }
+
+  /** The element created for `id` (scene UI editing uses it for selection and dragging). */
+  elementFor(id: string): HTMLElement | undefined {
+    return this.elements.get(id)
   }
 
   /** Positions world-space labels. Call once per frame after cameras move. */

@@ -248,6 +248,38 @@ export interface EntityDoc {
   scripts: ScriptRefDoc[]
   /** Prefab id: this entity is an instance and its contents come from the prefab. */
   prefab?: string
+  /**
+   * On a prefab instance: per-part changes, keyed by the id of the entity inside
+   * the (expanded) prefab. The root's transform, name and active flag live on the
+   * instance itself; its component changes are keyed by the prefab root's id.
+   */
+  overrides?: Record<string, EntityOverride>
+}
+
+/** Field changes a prefab instance makes to one entity of its prefab. */
+export type EntityOverride = { [K in ComponentKey]?: Partial<NonNullable<EntityDoc[K]>> } & {
+  name?: string
+  active?: boolean
+  transform?: TransformDoc
+}
+
+const OVERRIDABLE: ComponentKey[] = ['mesh', 'model', 'light', 'camera', 'audio', 'particles', 'rigidBody', 'collider', 'joint']
+
+/** An entity with an instance's overrides applied (only components it already has are changed). */
+export function applyOverride(e: EntityDoc, override: EntityOverride | undefined, isRoot: boolean): EntityDoc {
+  if (!override) return e
+  const out: EntityDoc = { ...e }
+  for (const key of OVERRIDABLE) {
+    const patch = override[key]
+    if (patch && out[key]) (out as unknown as Record<string, unknown>)[key] = { ...out[key], ...patch }
+  }
+  // The root's name/active/transform come from the instance itself.
+  if (!isRoot) {
+    if (override.name !== undefined) out.name = override.name
+    if (override.active !== undefined) out.active = override.active
+    if (override.transform) out.transform = override.transform
+  }
+  return out
 }
 
 export interface ScriptDoc {
@@ -298,6 +330,61 @@ export interface SceneDoc {
   settings: SceneSettings
   /** Flat list; array order is sibling order. */
   entities: EntityDoc[]
+  /** Screen UI laid out in the editor, drawn above the game (array order = drawing order). */
+  ui: UiElementDoc[]
+}
+
+export type UiAnchor = 'top-left' | 'top' | 'top-right' | 'left' | 'center' | 'right' | 'bottom-left' | 'bottom' | 'bottom-right'
+
+export interface UiElementDoc {
+  id: string
+  type: 'text' | 'button' | 'bar' | 'image'
+  /** Scripts address it by this name (ctx.ui.text(name, ...) replaces its text). */
+  name: string
+  visible: boolean
+  anchor: UiAnchor
+  /** Pixel offset from the anchor; positive is right/down. */
+  x: number
+  y: number
+  /** Text or button label. `{key}` shows ctx.globals[key], updated live. */
+  text: string
+  size: number
+  color: string
+  /** Card color; empty = default card, 'none' = no card. */
+  background: string
+  /** Pixels; 0 = fit the content. */
+  width: number
+  /** Bar fill: a number, a globals key, or `key/key` for a ratio (e.g. `Coins:got/Coins:total`). */
+  value: string
+  fill: string
+  /** Button: what a click does. */
+  action: 'none' | 'loadScene' | 'emit'
+  /** Scene name (loadScene) or event name (emit). */
+  target: string
+  /** Image: texture asset id. */
+  image: string | null
+}
+
+export function createUiElement(type: UiElementDoc['type'], name: string): UiElementDoc {
+  return {
+    id: newId(),
+    type,
+    name,
+    visible: true,
+    anchor: type === 'button' ? 'center' : type === 'bar' ? 'top-left' : 'top',
+    x: 0,
+    y: type === 'bar' ? 80 : 0,
+    text: type === 'button' ? 'Play' : type === 'text' ? 'Text' : '',
+    size: type === 'text' ? 18 : 14,
+    color: '#ffffff',
+    background: '',
+    width: type === 'image' ? 96 : 0,
+    value: type === 'bar' ? '0.5' : '',
+    fill: '#4cd97b',
+    action: 'none',
+    target: '',
+    image: null,
+  }
 }
 
 /** A reusable entity tree. Exactly one entity has `parent: null` (the root). */
@@ -574,7 +661,7 @@ export function createScene(name: string): SceneDoc {
     mesh: { ...componentDefaults.mesh(), color: '#7a8a6a' },
     collider: componentDefaults.collider(),
   })
-  return { id: newId(), name, settings: defaultSettings(), entities: [camera, sun, ground] }
+  return { id: newId(), name, settings: defaultSettings(), entities: [camera, sun, ground], ui: [] }
 }
 
 export function emptyProject(): ProjectDoc {
@@ -618,7 +705,8 @@ function expandInstance(instance: EntityDoc, prefabs: PrefabDoc[], depth: number
   // Joints between entities of the same prefab must point at this instance's copies.
   const remapJoint = (e: EntityDoc): EntityDoc =>
     e.joint?.target && innerIds.has(e.joint.target) ? { ...e, joint: { ...e.joint, target: mapId(e.joint.target) } } : e
-  return inner.map(remapJoint).map((e) =>
+  const overridden = (e: EntityDoc) => applyOverride(e, instance.overrides?.[e.id], e.id === root.id)
+  return inner.map(overridden).map(remapJoint).map((e) =>
     e.id === root.id
       ? {
           ...e,
@@ -635,6 +723,21 @@ function expandInstance(instance: EntityDoc, prefabs: PrefabDoc[], depth: number
         }
       : { ...e, id: mapId(e.id), parent: e.parent ? mapId(e.parent) : instance.id },
   )
+}
+
+/** The entities of a prefab as instances see them (nested prefabs expanded): the keys `overrides` use. */
+export function prefabParts(prefab: PrefabDoc, prefabs: PrefabDoc[]): EntityDoc[] {
+  return expandEntities(prefab.entities, prefabs)
+}
+
+/** A prefab based on another: its root is an instance of `base`, so it inherits everything until overridden. */
+export function createVariant(base: PrefabDoc, name = `${base.name} Variant`): PrefabDoc {
+  const root = prefabRoot(base)
+  return {
+    id: newId(),
+    name,
+    entities: [createEntity(name, { transform: structuredClone(root?.transform ?? { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }), prefab: base.id })],
+  }
 }
 
 /** A new, unparented instance of `prefab` using the prefab root's transform. */
@@ -732,6 +835,7 @@ export function parseProject(json: unknown): ProjectDoc {
       name: scene.name ?? 'Scene',
       settings: { ...defaultSettings(), ...scene.settings, navigation: { ...defaultNavSettings(), ...scene.settings?.navigation } },
       entities: (scene.entities ?? []).map(migrateEntity),
+      ui: (scene.ui ?? []).map((el) => ({ ...createUiElement(el.type ?? 'text', el.name ?? 'UI'), ...el })),
     })),
     prefabs: (doc.prefabs ?? []).map((p) => ({ ...p, entities: p.entities.map(migrateEntity) })),
     scripts: doc.scripts ?? [],

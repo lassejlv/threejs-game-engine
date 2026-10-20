@@ -2,6 +2,8 @@ import { mulberry32 } from '../engine'
 import {
   componentDefaults,
   createEntity,
+  createUiElement,
+  createVariant,
   defaultProjectSettings,
   defaultSettings,
   type EntityDoc,
@@ -213,7 +215,12 @@ export function sampleProject(): ProjectDoc {
         }),
       }),
   ])
-  const prefabs = [player, camera, coin, sparkle, crate, ball, portal]
+  // A variant: follows the Coin prefab but recolors it, so Bonus Room coins look different.
+  const purpleCoin = createVariant(coin, 'Purple Coin')
+  purpleCoin.entities[0].overrides = {
+    [coin.entities[0].id]: { mesh: { color: '#b48cff', emissive: '#4a2a8a', metalness: 0.5 } },
+  }
+  const prefabs = [player, camera, coin, purpleCoin, sparkle, crate, ball, portal]
   const instance = (p: PrefabDoc, position: Vec3, parent: string | null = null, extra: Partial<EntityDoc> = {}) => {
     const e = instantiatePrefab(p, { parent, ...extra })
     e.transform.position = position
@@ -386,6 +393,8 @@ export function sampleProject(): ProjectDoc {
       vignette: 0.2,
     },
     entities,
+    // Laid out in the editor's UI tools (Game view), not by a script.
+    ui: [{ ...createUiElement('text', 'Controls'), anchor: 'bottom', text: 'WASD move · Space jump · Shift sprint · E throw', size: 13 }],
   }
 
   // --- Scene 2: Bonus Room -------------------------------------------------
@@ -409,7 +418,7 @@ export function sampleProject(): ProjectDoc {
   ]
   for (let i = 0; i < 8; i++) {
     const angle = (i / 8) * Math.PI * 2
-    bonus.push(instance(coin, [Math.cos(angle) * 5, 1, Math.sin(angle) * 5]))
+    bonus.push(instance(purpleCoin, [Math.cos(angle) * 5, 1, Math.sin(angle) * 5]))
   }
   // A ghost that finds its way to the player (pathfinding) and stings on contact.
   bonus.push(
@@ -445,6 +454,7 @@ export function sampleProject(): ProjectDoc {
       saturation: 1.1,
     },
     entities: bonus,
+    ui: [],
   }
 
   return { version: 2, name: 'Coin Rush', settings: defaultProjectSettings(), scenes: [coinRush, bonusRoom], prefabs, scripts }

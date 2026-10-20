@@ -33,6 +33,7 @@ import { ColliderOutlines } from './colliderOutlines'
 import { editorCamera, getOrbit } from './editorCamera'
 import { disposeVisual, NodeFactory } from './nodes'
 import { SceneEnvironment } from './environment'
+import { UiPreview } from './uiPreview'
 
 /** Hooks the UI calls into the live scene view (set while edit mode is active). */
 export const sceneView = {
@@ -120,6 +121,8 @@ export function createEditScene(): GameScene {
       const factory = new NodeFactory(engine, assetLibrary, true)
       const environment = new SceneEnvironment(engine, assetLibrary)
       cleanups.push(() => environment.dispose())
+      const uiPreview = new UiPreview(engine.container, assetLibrary)
+      cleanups.push(() => uiPreview.dispose())
       const sync = new DocSync(factory, root)
       const outlines = new ColliderOutlines()
       scene.add(outlines.group)

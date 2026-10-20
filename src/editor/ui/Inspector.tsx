@@ -8,12 +8,16 @@ import {
   defaultCollider,
   type EntityDoc,
   type ParamValue,
+  applyOverride,
+  type EntityOverride,
   type JointDoc,
   type ParticlesDoc,
+  prefabParts,
   prefabRoot,
   type ProjectDoc,
   type ScriptRefDoc,
   type SceneSettings,
+  type UiElementDoc,
   type Vec3,
 } from '../document'
 import {
@@ -25,9 +29,11 @@ import {
   primarySelection,
   targetEntities,
   unpackPrefab,
+  deleteUiElement,
   updateEntities,
   updateEntity,
   updateScene,
+  updateUiElement,
 } from '../editor'
 import { BUILTINS, resolveBehavior, scriptLabel } from '../scripting'
 import {
@@ -57,6 +63,7 @@ export function Inspector() {
   const editing = useStore(editorStore, (s) => s.editing)
   const scene = useStore(editorStore, (s) => currentScene(s))
   const playing = useStore(editorStore, (s) => s.mode === 'play')
+  const uiElement = useStore(editorStore, (s) => (s.uiSelection && s.editing.kind === 'scene' ? currentScene(s).ui.find((u) => u.id === s.uiSelection) : undefined))
 
   return (
     <aside className="panel inspector">
@@ -80,6 +87,8 @@ export function Inspector() {
           <InstanceInspector key={primary} entity={entity} doc={doc} />
         ) : entity ? (
           <EntityInspector key={primary} entity={entity} doc={doc} />
+        ) : uiElement ? (
+          <UiElementInspector key={uiElement.id} element={uiElement} doc={doc} />
         ) : editing.kind === 'prefab' ? (
           <p className="hint">Editing a prefab. Changes apply to every instance. Select an object to edit it.</p>
         ) : (
@@ -87,6 +96,76 @@ export function Inspector() {
         )}
       </fieldset>
     </aside>
+  )
+}
+
+function UiElementInspector({ element: el, doc }: { element: UiElementDoc; doc: ProjectDoc }) {
+  const set = (patch: Partial<UiElementDoc>, key: string) => updateUiElement(el.id, patch, { merge: `ui.${el.id}.${key}`, label: `UI ${el.name}: ${key}` })
+  const sceneNames = doc.scenes.map((s) => [s.name, s.name] as const)
+  return (
+    <>
+      <div className="entity-header">
+        <input type="checkbox" checked={el.visible} onChange={(e) => set({ visible: e.target.checked }, 'visible')} title="Visible" aria-label="Visible" />
+        <TextInput className="entity-name" value={el.name} onChange={(name) => name && set({ name }, 'name')} />
+      </div>
+      <Section title={`Screen UI: ${el.type}`} icon={<Icon name="ui" className="icon-ui" />} onRemove={() => deleteUiElement(el.id)}>
+        <SelectField
+          label="Anchor"
+          value={el.anchor}
+          options={[
+            ['top-left', 'Top left'], ['top', 'Top'], ['top-right', 'Top right'],
+            ['left', 'Left'], ['center', 'Center'], ['right', 'Right'],
+            ['bottom-left', 'Bottom left'], ['bottom', 'Bottom'], ['bottom-right', 'Bottom right'],
+          ]}
+          onChange={(anchor) => set({ anchor }, 'anchor')}
+        />
+        <NumberField label="X offset (px)" value={el.x} step={1} onChange={(x) => set({ x }, 'x')} />
+        <NumberField label="Y offset (px)" value={el.y} step={1} onChange={(y) => set({ y }, 'y')} />
+        {el.type !== 'image' && (
+          <TextField label={el.type === 'bar' ? 'Label' : el.type === 'button' ? 'Label' : 'Text'} value={el.text} onChange={(text) => set({ text }, 'text')} />
+        )}
+        {el.type === 'bar' && (
+          <>
+            <TextField label="Value" value={el.value} onChange={(value) => set({ value }, 'value')} />
+            <ColorField label="Fill" value={el.fill} onChange={(fill) => set({ fill }, 'fill')} />
+          </>
+        )}
+        {el.type === 'image' && <AssetSelect kind="texture" label="Image" value={el.image} onChange={(image) => set({ image }, 'image')} />}
+        {el.type !== 'image' && (
+          <>
+            <NumberField label="Font size" value={el.size} step={1} min={6} onChange={(size) => set({ size }, 'size')} />
+            <ColorField label="Color" value={el.color} onChange={(color) => set({ color }, 'color')} />
+            <SelectField
+              label="Background"
+              value={el.background === '' ? 'card' : el.background === 'none' ? 'none' : 'custom'}
+              options={[['card', 'Card'], ['none', 'None'], ['custom', 'Color']]}
+              onChange={(v) => set({ background: v === 'card' ? '' : v === 'none' ? 'none' : '#1c2027' }, 'bg')}
+            />
+            {el.background !== '' && el.background !== 'none' && <ColorField label="Card color" value={el.background} onChange={(background) => set({ background }, 'bgc')} />}
+          </>
+        )}
+        <NumberField label="Width (0 = auto)" value={el.width} step={4} min={0} onChange={(width) => set({ width }, 'width')} />
+        {el.type === 'button' && (
+          <>
+            <SelectField
+              label="On click"
+              value={el.action}
+              options={[['none', 'Nothing'], ['loadScene', 'Load scene'], ['emit', 'Send event']]}
+              onChange={(action) => set({ action }, 'action')}
+            />
+            {el.action === 'loadScene' && (
+              <SelectField label="Scene" value={el.target} options={[['', 'Choose…'], ...sceneNames]} onChange={(target) => set({ target }, 'target')} />
+            )}
+            {el.action === 'emit' && <TextField label="Event name" value={el.target} onChange={(target) => set({ target }, 'target')} />}
+          </>
+        )}
+        <p className="hint">
+          Drag it in the Game view (Shift snaps to 10 px). <code>{'{key}'}</code> in text shows <code>ctx.globals[key]</code> live
+          {el.type === 'bar' && '; Value can be a number, a key, or key/key'}. Scripts can change it with <code>ctx.ui.text('{el.name}', …)</code>
+          {el.type === 'button' && el.action === 'emit' && ' and hear clicks with ctx.on(event)'}.
+        </p>
+      </Section>
+    </>
   )
 }
 
@@ -170,11 +249,19 @@ function SceneInspector({ sceneId, settings }: { sceneId: string; settings: Scen
   )
 }
 
-/** A prefab instance: own transform, name and active flag, plus script parameter overrides. */
+/**
+ * A prefab instance: its own transform, name and active flag, script parameter
+ * overrides, and field overrides for any part of the prefab (marked with •).
+ */
 function InstanceInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }) {
   const id = entity.id
   const prefab = doc.prefabs.find((p) => p.id === entity.prefab)
   const root = prefab && prefabRoot(prefab)
+  const parts = useMemo(() => (prefab ? prefabParts(prefab, doc.prefabs) : []), [prefab, doc.prefabs])
+  const [partId, setPartId] = useState<string>(() => root?.id ?? '')
+  const part = parts.find((p) => p.id === partId) ?? parts[0]
+  const isRoot = !!root && part?.id === root.id
+  const partOverride = part ? entity.overrides?.[part.id] : undefined
   const t = entity.transform
   const merge = (key: string): CommitOptions => ({ merge: `${id}.${key}` })
   const setOverride = (script: string, key: string, value: ParamValue) =>
@@ -191,7 +278,32 @@ function InstanceInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc
       },
       merge(`override.${script}.${key}`),
     )
-  const resetOverrides = () => updateEntity(id, { scripts: [] })
+  const setPart = (patch: EntityOverride, key: string) =>
+    updateEntity(
+      id,
+      (e) => {
+        const current = e.overrides?.[part!.id] ?? {}
+        const next: EntityOverride = { ...current }
+        for (const [k, v] of Object.entries(patch)) {
+          const old = (current as Record<string, unknown>)[k]
+          ;(next as Record<string, unknown>)[k] = v && typeof v === 'object' && !Array.isArray(v) && old && typeof old === 'object' ? { ...old, ...v } : v
+        }
+        return { overrides: { ...e.overrides, [part!.id]: next } }
+      },
+      merge(`part.${part!.id}.${key}`),
+    )
+  const setComponent = <K extends ComponentKey>(key: K, patch: Patch<K>, field: string) => setPart({ [key]: patch } as EntityOverride, `${key}.${field}`)
+  const revertPart = () =>
+    updateEntity(id, (e) => {
+      const rest = { ...e.overrides }
+      delete rest[part!.id]
+      return { overrides: Object.keys(rest).length ? rest : undefined }
+    })
+  const revertAll = () => updateEntity(id, { scripts: [], overrides: undefined })
+  const overriddenParts = Object.keys(entity.overrides ?? {}).length
+  // What this part looks like with the overrides applied; the root shows the instance's own transform.
+  const merged = part ? applyOverride(part, partOverride, isRoot) : undefined
+  const rootPart = parts.find((p) => p.id === root?.id)
 
   return (
     <>
@@ -214,6 +326,11 @@ function InstanceInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc
             <button type="button" onClick={() => unpackPrefab(id)} title="Replace with plain, editable copies">
               Unpack
             </button>
+            {(entity.scripts.length > 0 || overriddenParts > 0) && (
+              <button type="button" onClick={revertAll} title="Go back to exactly what the prefab says">
+                Revert all
+              </button>
+            )}
           </div>
         ) : (
           <p className="error-text">This prefab was deleted.</p>
@@ -224,7 +341,7 @@ function InstanceInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc
         <Vec3Field label="Rotation" value={t.rotation} step={1} onChange={(rotation) => updateEntity(id, { transform: { ...t, rotation } }, merge('rot'))} />
         <Vec3Field label="Scale" value={t.scale} step={0.05} onChange={(scale) => updateEntity(id, { transform: { ...t, scale } }, merge('scale'))} />
       </Section>
-      {root?.scripts.map((ref) => {
+      {rootPart?.scripts.map((ref) => {
         const behavior = resolveBehavior(ref.script, doc)
         if (behavior instanceof Error) return null
         const override = entity.scripts.find((s) => s.script === ref.script)?.params ?? {}
@@ -239,12 +356,40 @@ function InstanceInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc
           </Section>
         )
       })}
-      {entity.scripts.length > 0 && (
-        <div className="add-component">
-          <button type="button" onClick={resetOverrides}>
-            Revert overrides
-          </button>
-        </div>
+      {merged && part && (
+        <>
+          <div className="override-bar">
+            <SelectField
+              label="Override part"
+              value={part.id}
+              options={parts.map((p) => [p.id, `${p.id === root?.id ? 'Root' : p.name}${entity.overrides?.[p.id] ? ' •' : ''}`] as const)}
+              onChange={setPartId}
+            />
+            {partOverride && (
+              <Row label="">
+                <button type="button" onClick={revertPart}>
+                  Revert this part
+                </button>
+              </Row>
+            )}
+          </div>
+          {!isRoot && (
+            <Section title={`${merged.name}${partOverride?.transform || partOverride?.active !== undefined ? ' •' : ''}`} icon={<Icon name="move" />}>
+              <CheckField label="Active" value={merged.active} onChange={(active) => setPart({ active }, 'active')} />
+              <Vec3Field label="Position" value={merged.transform.position} onChange={(position) => setPart({ transform: { ...merged.transform, position } }, 'pos')} />
+              <Vec3Field label="Rotation" value={merged.transform.rotation} step={1} onChange={(rotation) => setPart({ transform: { ...merged.transform, rotation } }, 'rot')} />
+              <Vec3Field label="Scale" value={merged.transform.scale} step={0.05} onChange={(scale) => setPart({ transform: { ...merged.transform, scale } }, 'scale')} />
+            </Section>
+          )}
+          <div className="override-sections">
+            <ComponentSections entity={merged} doc={doc} setComponent={setComponent} />
+          </div>
+          {partOverride && (
+            <p className="hint">
+              Overridden here: {Object.keys(partOverride).join(', ')}. Everything else follows the prefab.
+            </p>
+          )}
+        </>
       )}
     </>
   )
@@ -325,227 +470,7 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
         <Vec3Field label="Scale" value={t.scale} step={0.05} onChange={(scale) => setVec('scale', scale, 'scale')} />
       </Section>
 
-      {entity.mesh && (
-        <Section title={COMPONENT_LABELS.mesh} icon={<Icon name="cube" />} onRemove={() => removeComponent('mesh')}>
-          <SelectField
-            label="Shape"
-            value={entity.mesh.shape}
-            options={[
-              ['box', 'Cube'], ['sphere', 'Sphere'], ['cylinder', 'Cylinder'], ['capsule', 'Capsule'],
-              ['plane', 'Plane'], ['cone', 'Cone'], ['torus', 'Torus'],
-            ]}
-            onChange={(shape) => setComponent('mesh', { shape }, 'shape')}
-          />
-          <ColorField label="Color" value={entity.mesh.color} onChange={(color) => setComponent('mesh', { color }, 'color')} />
-          <TextureField value={entity.mesh.map} onChange={(map) => setComponent('mesh', { map }, 'map')} />
-          <AssetSelect kind="texture" label="Normal map" value={entity.mesh.normalMap} onChange={(normalMap) => setComponent('mesh', { normalMap }, 'nmap')} />
-          {entity.mesh.normalMap && (
-            <NumberField label="Normal strength" value={entity.mesh.normalScale} step={0.05} onChange={(normalScale) => setComponent('mesh', { normalScale }, 'ns')} />
-          )}
-          <AssetSelect kind="texture" label="Roughness map" value={entity.mesh.roughnessMap} onChange={(roughnessMap) => setComponent('mesh', { roughnessMap }, 'rmap')} />
-          <AssetSelect kind="texture" label="Metalness map" value={entity.mesh.metalnessMap} onChange={(metalnessMap) => setComponent('mesh', { metalnessMap }, 'mmap')} />
-          <AssetSelect kind="texture" label="Emissive map" value={entity.mesh.emissiveMap} onChange={(emissiveMap) => setComponent('mesh', { emissiveMap }, 'emap')} />
-          {(entity.mesh.map || entity.mesh.normalMap || entity.mesh.roughnessMap || entity.mesh.metalnessMap || entity.mesh.emissiveMap) && (
-            <>
-              <NumberField label="Tiling U" value={entity.mesh.tiling[0]} step={0.1} min={0.01} onChange={(u) => setComponent('mesh', { tiling: [u, entity.mesh!.tiling[1]] }, 'tu')} />
-              <NumberField label="Tiling V" value={entity.mesh.tiling[1]} step={0.1} min={0.01} onChange={(v) => setComponent('mesh', { tiling: [entity.mesh!.tiling[0], v] }, 'tv')} />
-            </>
-          )}
-          <NumberField label="Opacity" value={entity.mesh.opacity} step={0.05} min={0} max={1} onChange={(opacity) => setComponent('mesh', { opacity }, 'op')} />
-          <CheckField label="Double sided" value={entity.mesh.doubleSided} onChange={(doubleSided) => setComponent('mesh', { doubleSided }, 'ds')} />
-          <NumberField label="Metalness" value={entity.mesh.metalness} step={0.01} min={0} max={1} onChange={(metalness) => setComponent('mesh', { metalness }, 'metal')} />
-          <NumberField label="Roughness" value={entity.mesh.roughness} step={0.01} min={0} max={1} onChange={(roughness) => setComponent('mesh', { roughness }, 'rough')} />
-          <ColorField label="Emissive" value={entity.mesh.emissive} onChange={(emissive) => setComponent('mesh', { emissive }, 'em')} />
-          <NumberField label="Emissive intensity" value={entity.mesh.emissiveIntensity} step={0.05} min={0} onChange={(emissiveIntensity) => setComponent('mesh', { emissiveIntensity }, 'emi')} />
-          <CheckField label="Cast shadow" value={entity.mesh.castShadow} onChange={(castShadow) => setComponent('mesh', { castShadow }, 'cs')} />
-          <CheckField label="Receive shadow" value={entity.mesh.receiveShadow} onChange={(receiveShadow) => setComponent('mesh', { receiveShadow }, 'rs')} />
-        </Section>
-      )}
-
-      {entity.model && (
-        <Section title={COMPONENT_LABELS.model} icon={<Icon name="model" />} onRemove={() => removeComponent('model')}>
-          <AssetSelect kind="model" label="Asset" value={entity.model.asset} onChange={(asset) => setComponent('model', { asset }, 'asset')} />
-          {entity.model.animStates.length === 0 && (
-            <ClipSelect asset={entity.model.asset} value={entity.model.animation} onChange={(animation) => setComponent('model', { animation }, 'anim')} />
-          )}
-          {entity.model.animStates.length === 0 && entity.model.animation && (
-            <>
-              <NumberField label="Speed" value={entity.model.animationSpeed} step={0.05} min={0} onChange={(animationSpeed) => setComponent('model', { animationSpeed }, 'aspeed')} />
-              <CheckField label="Loop" value={entity.model.animationLoop} onChange={(animationLoop) => setComponent('model', { animationLoop }, 'aloop')} />
-            </>
-          )}
-          <CheckField label="Cast shadow" value={entity.model.castShadow} onChange={(castShadow) => setComponent('model', { castShadow }, 'cs')} />
-          <CheckField label="Receive shadow" value={entity.model.receiveShadow} onChange={(receiveShadow) => setComponent('model', { receiveShadow }, 'rs')} />
-          {entity.model.lods.map((level, index) => {
-            const setLevel = (patch: Partial<typeof level>, field: string) =>
-              setComponent('model', { lods: entity.model!.lods.map((l, i) => (i === index ? { ...l, ...patch } : l)) }, `lod${index}.${field}`)
-            return (
-              <div key={index} className="lod-level">
-                <AssetSelect kind="model" label={`LOD ${index + 1}`} value={level.asset} onChange={(asset) => setLevel({ asset }, 'asset')} />
-                <NumberField label="Beyond (m)" value={level.distance} step={1} min={0} onChange={(distance) => setLevel({ distance }, 'dist')} />
-                <Row label="">
-                  <button type="button" onClick={() => setComponent('model', { lods: entity.model!.lods.filter((_, i) => i !== index) }, 'lodrm')}>
-                    Remove LOD {index + 1}
-                  </button>
-                </Row>
-              </div>
-            )
-          })}
-          {entity.model.lods.length < 4 && (
-            <Row label="">
-              <button
-                type="button"
-                onClick={() => {
-                  const last = entity.model!.lods.at(-1)?.distance ?? 0
-                  setComponent('model', { lods: [...entity.model!.lods, { asset: null, distance: last + 25 }] }, 'lodadd')
-                }}
-              >
-                Add LOD level
-              </button>
-            </Row>
-          )}
-          <AnimStatesEditor
-            asset={entity.model.asset}
-            states={entity.model.animStates}
-            transitions={entity.model.animTransitions}
-            onChange={(patch, field) => setComponent('model', patch, field)}
-          />
-          <NumberField label="Cull distance (0 = off)" value={entity.model.cullDistance} step={5} min={0} onChange={(cullDistance) => setComponent('model', { cullDistance }, 'cull')} />
-          {entity.model.lods.length > 0 && <p className="hint">LOD levels swap in simpler models with distance. Animations play on the full model only.</p>}
-        </Section>
-      )}
-
-      {entity.light && (
-        <Section title={COMPONENT_LABELS.light} icon={<Icon name="light" />} onRemove={() => removeComponent('light')}>
-          <SelectField
-            label="Type"
-            value={entity.light.type}
-            options={[['directional', 'Directional'], ['point', 'Point'], ['spot', 'Spot'], ['hemisphere', 'Hemisphere']]}
-            onChange={(type) => setComponent('light', { type }, 'type')}
-          />
-          <ColorField label={entity.light.type === 'hemisphere' ? 'Sky color' : 'Color'} value={entity.light.color} onChange={(color) => setComponent('light', { color }, 'color')} />
-          {entity.light.type === 'hemisphere' && (
-            <ColorField label="Ground color" value={entity.light.groundColor} onChange={(groundColor) => setComponent('light', { groundColor }, 'gc')} />
-          )}
-          <NumberField label="Intensity" value={entity.light.intensity} step={0.05} min={0} onChange={(intensity) => setComponent('light', { intensity }, 'int')} />
-          {(entity.light.type === 'point' || entity.light.type === 'spot') && (
-            <NumberField label="Range (0 = ∞)" value={entity.light.distance} step={0.5} min={0} onChange={(distance) => setComponent('light', { distance }, 'dist')} />
-          )}
-          {entity.light.type === 'spot' && (
-            <NumberField label="Angle" value={entity.light.angle} step={1} min={1} max={89} onChange={(angle) => setComponent('light', { angle }, 'angle')} />
-          )}
-          {entity.light.type !== 'hemisphere' && (
-            <CheckField label="Cast shadow" value={entity.light.castShadow} onChange={(castShadow) => setComponent('light', { castShadow }, 'cs')} />
-          )}
-          {entity.light.type === 'directional' && entity.light.castShadow && (
-            <NumberField label="Shadow area" value={entity.light.shadowArea} step={1} min={1} onChange={(shadowArea) => setComponent('light', { shadowArea }, 'sa')} />
-          )}
-        </Section>
-      )}
-
-      {entity.camera && (
-        <Section title={COMPONENT_LABELS.camera} icon={<Icon name="camera" />} onRemove={() => removeComponent('camera')}>
-          <NumberField label="Field of view" value={entity.camera.fov} step={1} min={1} max={170} onChange={(fov) => setComponent('camera', { fov }, 'fov')} />
-          <NumberField label="Near" value={entity.camera.near} step={0.01} min={0.001} onChange={(near) => setComponent('camera', { near }, 'near')} />
-          <NumberField label="Far" value={entity.camera.far} step={10} min={1} onChange={(far) => setComponent('camera', { far }, 'far')} />
-          <CheckField label="Main camera" value={entity.camera.main} onChange={(main) => setComponent('camera', { main }, 'main')} />
-        </Section>
-      )}
-
-      {entity.audio && (
-        <Section title={COMPONENT_LABELS.audio} icon={<Icon name="audio" className="icon-audio" />} onRemove={() => removeComponent('audio')}>
-          <AssetSelect kind="audio" label="Clip" value={entity.audio.asset} onChange={(asset) => setComponent('audio', { asset }, 'asset')} />
-          <NumberField label="Volume" value={entity.audio.volume} step={0.05} min={0} max={4} onChange={(volume) => setComponent('audio', { volume }, 'vol')} />
-          <CheckField label="Loop" value={entity.audio.loop} onChange={(loop) => setComponent('audio', { loop }, 'loop')} />
-          <CheckField label="Play on start" value={entity.audio.playOnStart} onChange={(playOnStart) => setComponent('audio', { playOnStart }, 'pos')} />
-          <CheckField label="3D (spatial)" value={entity.audio.spatial} onChange={(spatial) => setComponent('audio', { spatial }, 'spatial')} />
-          {entity.audio.spatial && (
-            <NumberField label="Ref distance" value={entity.audio.refDistance} step={0.5} min={0.1} onChange={(refDistance) => setComponent('audio', { refDistance }, 'ref')} />
-          )}
-          <Row label="">
-            <PreviewButton asset={entity.audio.asset} volume={entity.audio.volume} />
-          </Row>
-        </Section>
-      )}
-
-      {entity.particles && (
-        <ParticlesSection particles={entity.particles} set={(patch, field) => setComponent('particles', patch, field)} onRemove={() => removeComponent('particles')} />
-      )}
-
-      {entity.rigidBody && (
-        <Section title={COMPONENT_LABELS.rigidBody} icon={<Icon name="body" />} onRemove={() => removeComponent('rigidBody')}>
-          <SelectField
-            label="Type"
-            value={entity.rigidBody.type}
-            options={[['dynamic', 'Dynamic'], ['kinematic', 'Kinematic'], ['character', 'Character']]}
-            onChange={(type) => setComponent('rigidBody', { type }, 'type')}
-          />
-          {entity.rigidBody.type === 'dynamic' && (
-            <>
-              <NumberField label="Mass (0 = auto)" value={entity.rigidBody.mass} step={0.1} min={0} onChange={(mass) => setComponent('rigidBody', { mass }, 'mass')} />
-              <CheckField label="Lock rotation" value={entity.rigidBody.lockRotation} onChange={(lockRotation) => setComponent('rigidBody', { lockRotation }, 'lock')} />
-              <NumberField label="Damping" value={entity.rigidBody.damping} step={0.05} min={0} onChange={(damping) => setComponent('rigidBody', { damping }, 'damp')} />
-              <NumberField label="Bounciness" value={entity.rigidBody.restitution} step={0.05} min={0} max={1} onChange={(restitution) => setComponent('rigidBody', { restitution }, 'rest')} />
-            </>
-          )}
-          {entity.rigidBody.type !== 'kinematic' && (
-            <NumberField label="Gravity scale" value={entity.rigidBody.gravityScale} step={0.05} onChange={(gravityScale) => setComponent('rigidBody', { gravityScale }, 'gs')} />
-          )}
-          <p className="hint">
-            {entity.rigidBody.type === 'character'
-              ? 'Moved by setting velocity; climbs steps and slopes up to 50°. Pair with a capsule collider.'
-              : entity.rigidBody.type === 'kinematic'
-                ? 'Moved by scripts (position or velocity); pushes dynamic bodies but is never pushed.'
-                : 'Simulated by physics. Needs a collider.'}
-            {entity.parent && ' Detached from its parent in play mode.'}
-          </p>
-        </Section>
-      )}
-
-      {entity.collider && (
-        <Section title={COMPONENT_LABELS.collider} icon={<Icon name="collider" />} onRemove={() => removeComponent('collider')}>
-          <SelectField
-            label="Shape"
-            value={entity.collider.shape}
-            options={[
-              ['box', 'Box'], ['sphere', 'Sphere'], ['capsule', 'Capsule'], ['cylinder', 'Cylinder'],
-              ['mesh', 'Mesh (exact)'], ['convex', 'Convex hull'],
-            ]}
-            onChange={(shape) => setComponent('collider', { shape }, 'shape')}
-          />
-          {(entity.collider.shape === 'mesh' || entity.collider.shape === 'convex') && (
-            <p className="hint">
-              Built from this entity's Mesh Renderer or Model.
-              {entity.collider.shape === 'mesh' && ' Exact surface for static and kinematic objects; dynamic bodies use the convex hull.'}
-            </p>
-          )}
-          <SelectField
-            label="Layer"
-            value={String(entity.collider.layer)}
-            options={doc.settings.layerNames.map((name, i) => [String(i), name] as const)}
-            onChange={(layer) => setComponent('collider', { layer: Number(layer) }, 'layer')}
-          />
-          {entity.collider.shape === 'box' && (
-            <Vec3Field label="Size" value={entity.collider.size} step={0.05} onChange={(size) => setComponent('collider', { size }, 'size')} />
-          )}
-          {entity.collider.shape !== 'box' && entity.collider.shape !== 'mesh' && entity.collider.shape !== 'convex' && (
-            <NumberField label="Radius" value={entity.collider.radius} step={0.05} min={0} onChange={(radius) => setComponent('collider', { radius }, 'radius')} />
-          )}
-          {(entity.collider.shape === 'capsule' || entity.collider.shape === 'cylinder') && (
-            <NumberField label="Height" value={entity.collider.height} step={0.05} min={0} onChange={(height) => setComponent('collider', { height }, 'height')} />
-          )}
-          <Vec3Field label="Center" value={entity.collider.center} step={0.05} onChange={(center) => setComponent('collider', { center }, 'center')} />
-          <NumberField label="Friction" value={entity.collider.friction} step={0.05} min={0} onChange={(friction) => setComponent('collider', { friction }, 'fric')} />
-          <CheckField label="Is trigger" value={entity.collider.trigger} onChange={(trigger) => setComponent('collider', { trigger }, 'trig')} />
-          {entity.collider.shape !== 'mesh' && entity.collider.shape !== 'convex' && <ColliderHandlesToggle />}
-          <p className="hint">Sizes are multiplied by the transform scale.</p>
-        </Section>
-      )}
-
-      {entity.joint && (
-        <JointSection entity={entity} set={(patch, field) => setComponent('joint', patch, field)} onRemove={() => removeComponent('joint')} />
-      )}
-
+      <ComponentSections entity={entity} doc={doc} setComponent={setComponent} removeComponent={removeComponent} />
       {entity.scripts.map((ref, index) => (
         <ScriptSection key={`${index}:${ref.script}`} entity={entity} index={index} scriptRef={ref} doc={doc} options={scripts} />
       ))}
@@ -593,7 +518,7 @@ function JointSection({
 }: {
   entity: EntityDoc
   set: (patch: Partial<JointDoc>, field: string) => void
-  onRemove: () => void
+  onRemove?: () => void
 }) {
   const j = entity.joint!
   const doc = useStore(editorStore, (s) => s.doc)
@@ -800,7 +725,7 @@ function ParticlesSection({
 }: {
   particles: ParticlesDoc
   set: (patch: Partial<ParticlesDoc>, field: string) => void
-  onRemove: () => void
+  onRemove?: () => void
 }) {
   return (
     <Section title={COMPONENT_LABELS.particles} icon={<Icon name="particles" />} onRemove={onRemove}>
@@ -870,6 +795,245 @@ function ParticlesSection({
         {p.destroyWhenDone && ' In play mode the entity is destroyed once the effect ends: good for spawned one-shot effects.'}
       </p>
     </Section>
+  )
+}
+
+/** The Inspector sections of an entity's components. Without `removeComponent` they can't be removed (prefab overrides). */
+function ComponentSections({
+  entity,
+  doc,
+  setComponent,
+  removeComponent,
+}: {
+  entity: EntityDoc
+  doc: ProjectDoc
+  setComponent: <K extends ComponentKey>(key: K, patch: Patch<K>, field: string) => void
+  removeComponent?: (key: ComponentKey) => void
+}) {
+  return (
+    <>
+      {entity.mesh && (
+        <Section title={COMPONENT_LABELS.mesh} icon={<Icon name="cube" />} onRemove={removeComponent && (() => removeComponent('mesh'))}>
+          <SelectField
+            label="Shape"
+            value={entity.mesh.shape}
+            options={[
+              ['box', 'Cube'], ['sphere', 'Sphere'], ['cylinder', 'Cylinder'], ['capsule', 'Capsule'],
+              ['plane', 'Plane'], ['cone', 'Cone'], ['torus', 'Torus'],
+            ]}
+            onChange={(shape) => setComponent('mesh', { shape }, 'shape')}
+          />
+          <ColorField label="Color" value={entity.mesh.color} onChange={(color) => setComponent('mesh', { color }, 'color')} />
+          <TextureField value={entity.mesh.map} onChange={(map) => setComponent('mesh', { map }, 'map')} />
+          <AssetSelect kind="texture" label="Normal map" value={entity.mesh.normalMap} onChange={(normalMap) => setComponent('mesh', { normalMap }, 'nmap')} />
+          {entity.mesh.normalMap && (
+            <NumberField label="Normal strength" value={entity.mesh.normalScale} step={0.05} onChange={(normalScale) => setComponent('mesh', { normalScale }, 'ns')} />
+          )}
+          <AssetSelect kind="texture" label="Roughness map" value={entity.mesh.roughnessMap} onChange={(roughnessMap) => setComponent('mesh', { roughnessMap }, 'rmap')} />
+          <AssetSelect kind="texture" label="Metalness map" value={entity.mesh.metalnessMap} onChange={(metalnessMap) => setComponent('mesh', { metalnessMap }, 'mmap')} />
+          <AssetSelect kind="texture" label="Emissive map" value={entity.mesh.emissiveMap} onChange={(emissiveMap) => setComponent('mesh', { emissiveMap }, 'emap')} />
+          {(entity.mesh.map || entity.mesh.normalMap || entity.mesh.roughnessMap || entity.mesh.metalnessMap || entity.mesh.emissiveMap) && (
+            <>
+              <NumberField label="Tiling U" value={entity.mesh.tiling[0]} step={0.1} min={0.01} onChange={(u) => setComponent('mesh', { tiling: [u, entity.mesh!.tiling[1]] }, 'tu')} />
+              <NumberField label="Tiling V" value={entity.mesh.tiling[1]} step={0.1} min={0.01} onChange={(v) => setComponent('mesh', { tiling: [entity.mesh!.tiling[0], v] }, 'tv')} />
+            </>
+          )}
+          <NumberField label="Opacity" value={entity.mesh.opacity} step={0.05} min={0} max={1} onChange={(opacity) => setComponent('mesh', { opacity }, 'op')} />
+          <CheckField label="Double sided" value={entity.mesh.doubleSided} onChange={(doubleSided) => setComponent('mesh', { doubleSided }, 'ds')} />
+          <NumberField label="Metalness" value={entity.mesh.metalness} step={0.01} min={0} max={1} onChange={(metalness) => setComponent('mesh', { metalness }, 'metal')} />
+          <NumberField label="Roughness" value={entity.mesh.roughness} step={0.01} min={0} max={1} onChange={(roughness) => setComponent('mesh', { roughness }, 'rough')} />
+          <ColorField label="Emissive" value={entity.mesh.emissive} onChange={(emissive) => setComponent('mesh', { emissive }, 'em')} />
+          <NumberField label="Emissive intensity" value={entity.mesh.emissiveIntensity} step={0.05} min={0} onChange={(emissiveIntensity) => setComponent('mesh', { emissiveIntensity }, 'emi')} />
+          <CheckField label="Cast shadow" value={entity.mesh.castShadow} onChange={(castShadow) => setComponent('mesh', { castShadow }, 'cs')} />
+          <CheckField label="Receive shadow" value={entity.mesh.receiveShadow} onChange={(receiveShadow) => setComponent('mesh', { receiveShadow }, 'rs')} />
+        </Section>
+      )}
+
+      {entity.model && (
+        <Section title={COMPONENT_LABELS.model} icon={<Icon name="model" />} onRemove={removeComponent && (() => removeComponent('model'))}>
+          <AssetSelect kind="model" label="Asset" value={entity.model.asset} onChange={(asset) => setComponent('model', { asset }, 'asset')} />
+          {entity.model.animStates.length === 0 && (
+            <ClipSelect asset={entity.model.asset} value={entity.model.animation} onChange={(animation) => setComponent('model', { animation }, 'anim')} />
+          )}
+          {entity.model.animStates.length === 0 && entity.model.animation && (
+            <>
+              <NumberField label="Speed" value={entity.model.animationSpeed} step={0.05} min={0} onChange={(animationSpeed) => setComponent('model', { animationSpeed }, 'aspeed')} />
+              <CheckField label="Loop" value={entity.model.animationLoop} onChange={(animationLoop) => setComponent('model', { animationLoop }, 'aloop')} />
+            </>
+          )}
+          <CheckField label="Cast shadow" value={entity.model.castShadow} onChange={(castShadow) => setComponent('model', { castShadow }, 'cs')} />
+          <CheckField label="Receive shadow" value={entity.model.receiveShadow} onChange={(receiveShadow) => setComponent('model', { receiveShadow }, 'rs')} />
+          {entity.model.lods.map((level, index) => {
+            const setLevel = (patch: Partial<typeof level>, field: string) =>
+              setComponent('model', { lods: entity.model!.lods.map((l, i) => (i === index ? { ...l, ...patch } : l)) }, `lod${index}.${field}`)
+            return (
+              <div key={index} className="lod-level">
+                <AssetSelect kind="model" label={`LOD ${index + 1}`} value={level.asset} onChange={(asset) => setLevel({ asset }, 'asset')} />
+                <NumberField label="Beyond (m)" value={level.distance} step={1} min={0} onChange={(distance) => setLevel({ distance }, 'dist')} />
+                <Row label="">
+                  <button type="button" onClick={() => setComponent('model', { lods: entity.model!.lods.filter((_, i) => i !== index) }, 'lodrm')}>
+                    Remove LOD {index + 1}
+                  </button>
+                </Row>
+              </div>
+            )
+          })}
+          {entity.model.lods.length < 4 && (
+            <Row label="">
+              <button
+                type="button"
+                onClick={() => {
+                  const last = entity.model!.lods.at(-1)?.distance ?? 0
+                  setComponent('model', { lods: [...entity.model!.lods, { asset: null, distance: last + 25 }] }, 'lodadd')
+                }}
+              >
+                Add LOD level
+              </button>
+            </Row>
+          )}
+          <AnimStatesEditor
+            asset={entity.model.asset}
+            states={entity.model.animStates}
+            transitions={entity.model.animTransitions}
+            onChange={(patch, field) => setComponent('model', patch, field)}
+          />
+          <NumberField label="Cull distance (0 = off)" value={entity.model.cullDistance} step={5} min={0} onChange={(cullDistance) => setComponent('model', { cullDistance }, 'cull')} />
+          {entity.model.lods.length > 0 && <p className="hint">LOD levels swap in simpler models with distance. Animations play on the full model only.</p>}
+        </Section>
+      )}
+
+      {entity.light && (
+        <Section title={COMPONENT_LABELS.light} icon={<Icon name="light" />} onRemove={removeComponent && (() => removeComponent('light'))}>
+          <SelectField
+            label="Type"
+            value={entity.light.type}
+            options={[['directional', 'Directional'], ['point', 'Point'], ['spot', 'Spot'], ['hemisphere', 'Hemisphere']]}
+            onChange={(type) => setComponent('light', { type }, 'type')}
+          />
+          <ColorField label={entity.light.type === 'hemisphere' ? 'Sky color' : 'Color'} value={entity.light.color} onChange={(color) => setComponent('light', { color }, 'color')} />
+          {entity.light.type === 'hemisphere' && (
+            <ColorField label="Ground color" value={entity.light.groundColor} onChange={(groundColor) => setComponent('light', { groundColor }, 'gc')} />
+          )}
+          <NumberField label="Intensity" value={entity.light.intensity} step={0.05} min={0} onChange={(intensity) => setComponent('light', { intensity }, 'int')} />
+          {(entity.light.type === 'point' || entity.light.type === 'spot') && (
+            <NumberField label="Range (0 = ∞)" value={entity.light.distance} step={0.5} min={0} onChange={(distance) => setComponent('light', { distance }, 'dist')} />
+          )}
+          {entity.light.type === 'spot' && (
+            <NumberField label="Angle" value={entity.light.angle} step={1} min={1} max={89} onChange={(angle) => setComponent('light', { angle }, 'angle')} />
+          )}
+          {entity.light.type !== 'hemisphere' && (
+            <CheckField label="Cast shadow" value={entity.light.castShadow} onChange={(castShadow) => setComponent('light', { castShadow }, 'cs')} />
+          )}
+          {entity.light.type === 'directional' && entity.light.castShadow && (
+            <NumberField label="Shadow area" value={entity.light.shadowArea} step={1} min={1} onChange={(shadowArea) => setComponent('light', { shadowArea }, 'sa')} />
+          )}
+        </Section>
+      )}
+
+      {entity.camera && (
+        <Section title={COMPONENT_LABELS.camera} icon={<Icon name="camera" />} onRemove={removeComponent && (() => removeComponent('camera'))}>
+          <NumberField label="Field of view" value={entity.camera.fov} step={1} min={1} max={170} onChange={(fov) => setComponent('camera', { fov }, 'fov')} />
+          <NumberField label="Near" value={entity.camera.near} step={0.01} min={0.001} onChange={(near) => setComponent('camera', { near }, 'near')} />
+          <NumberField label="Far" value={entity.camera.far} step={10} min={1} onChange={(far) => setComponent('camera', { far }, 'far')} />
+          <CheckField label="Main camera" value={entity.camera.main} onChange={(main) => setComponent('camera', { main }, 'main')} />
+        </Section>
+      )}
+
+      {entity.audio && (
+        <Section title={COMPONENT_LABELS.audio} icon={<Icon name="audio" className="icon-audio" />} onRemove={removeComponent && (() => removeComponent('audio'))}>
+          <AssetSelect kind="audio" label="Clip" value={entity.audio.asset} onChange={(asset) => setComponent('audio', { asset }, 'asset')} />
+          <NumberField label="Volume" value={entity.audio.volume} step={0.05} min={0} max={4} onChange={(volume) => setComponent('audio', { volume }, 'vol')} />
+          <CheckField label="Loop" value={entity.audio.loop} onChange={(loop) => setComponent('audio', { loop }, 'loop')} />
+          <CheckField label="Play on start" value={entity.audio.playOnStart} onChange={(playOnStart) => setComponent('audio', { playOnStart }, 'pos')} />
+          <CheckField label="3D (spatial)" value={entity.audio.spatial} onChange={(spatial) => setComponent('audio', { spatial }, 'spatial')} />
+          {entity.audio.spatial && (
+            <NumberField label="Ref distance" value={entity.audio.refDistance} step={0.5} min={0.1} onChange={(refDistance) => setComponent('audio', { refDistance }, 'ref')} />
+          )}
+          <Row label="">
+            <PreviewButton asset={entity.audio.asset} volume={entity.audio.volume} />
+          </Row>
+        </Section>
+      )}
+
+      {entity.particles && (
+        <ParticlesSection particles={entity.particles} set={(patch, field) => setComponent('particles', patch, field)} onRemove={removeComponent && (() => removeComponent('particles'))} />
+      )}
+
+      {entity.rigidBody && (
+        <Section title={COMPONENT_LABELS.rigidBody} icon={<Icon name="body" />} onRemove={removeComponent && (() => removeComponent('rigidBody'))}>
+          <SelectField
+            label="Type"
+            value={entity.rigidBody.type}
+            options={[['dynamic', 'Dynamic'], ['kinematic', 'Kinematic'], ['character', 'Character']]}
+            onChange={(type) => setComponent('rigidBody', { type }, 'type')}
+          />
+          {entity.rigidBody.type === 'dynamic' && (
+            <>
+              <NumberField label="Mass (0 = auto)" value={entity.rigidBody.mass} step={0.1} min={0} onChange={(mass) => setComponent('rigidBody', { mass }, 'mass')} />
+              <CheckField label="Lock rotation" value={entity.rigidBody.lockRotation} onChange={(lockRotation) => setComponent('rigidBody', { lockRotation }, 'lock')} />
+              <NumberField label="Damping" value={entity.rigidBody.damping} step={0.05} min={0} onChange={(damping) => setComponent('rigidBody', { damping }, 'damp')} />
+              <NumberField label="Bounciness" value={entity.rigidBody.restitution} step={0.05} min={0} max={1} onChange={(restitution) => setComponent('rigidBody', { restitution }, 'rest')} />
+            </>
+          )}
+          {entity.rigidBody.type !== 'kinematic' && (
+            <NumberField label="Gravity scale" value={entity.rigidBody.gravityScale} step={0.05} onChange={(gravityScale) => setComponent('rigidBody', { gravityScale }, 'gs')} />
+          )}
+          <p className="hint">
+            {entity.rigidBody.type === 'character'
+              ? 'Moved by setting velocity; climbs steps and slopes up to 50°. Pair with a capsule collider.'
+              : entity.rigidBody.type === 'kinematic'
+                ? 'Moved by scripts (position or velocity); pushes dynamic bodies but is never pushed.'
+                : 'Simulated by physics. Needs a collider.'}
+            {entity.parent && ' Detached from its parent in play mode.'}
+          </p>
+        </Section>
+      )}
+
+      {entity.collider && (
+        <Section title={COMPONENT_LABELS.collider} icon={<Icon name="collider" />} onRemove={removeComponent && (() => removeComponent('collider'))}>
+          <SelectField
+            label="Shape"
+            value={entity.collider.shape}
+            options={[
+              ['box', 'Box'], ['sphere', 'Sphere'], ['capsule', 'Capsule'], ['cylinder', 'Cylinder'],
+              ['mesh', 'Mesh (exact)'], ['convex', 'Convex hull'],
+            ]}
+            onChange={(shape) => setComponent('collider', { shape }, 'shape')}
+          />
+          {(entity.collider.shape === 'mesh' || entity.collider.shape === 'convex') && (
+            <p className="hint">
+              Built from this entity's Mesh Renderer or Model.
+              {entity.collider.shape === 'mesh' && ' Exact surface for static and kinematic objects; dynamic bodies use the convex hull.'}
+            </p>
+          )}
+          <SelectField
+            label="Layer"
+            value={String(entity.collider.layer)}
+            options={doc.settings.layerNames.map((name, i) => [String(i), name] as const)}
+            onChange={(layer) => setComponent('collider', { layer: Number(layer) }, 'layer')}
+          />
+          {entity.collider.shape === 'box' && (
+            <Vec3Field label="Size" value={entity.collider.size} step={0.05} onChange={(size) => setComponent('collider', { size }, 'size')} />
+          )}
+          {entity.collider.shape !== 'box' && entity.collider.shape !== 'mesh' && entity.collider.shape !== 'convex' && (
+            <NumberField label="Radius" value={entity.collider.radius} step={0.05} min={0} onChange={(radius) => setComponent('collider', { radius }, 'radius')} />
+          )}
+          {(entity.collider.shape === 'capsule' || entity.collider.shape === 'cylinder') && (
+            <NumberField label="Height" value={entity.collider.height} step={0.05} min={0} onChange={(height) => setComponent('collider', { height }, 'height')} />
+          )}
+          <Vec3Field label="Center" value={entity.collider.center} step={0.05} onChange={(center) => setComponent('collider', { center }, 'center')} />
+          <NumberField label="Friction" value={entity.collider.friction} step={0.05} min={0} onChange={(friction) => setComponent('collider', { friction }, 'fric')} />
+          <CheckField label="Is trigger" value={entity.collider.trigger} onChange={(trigger) => setComponent('collider', { trigger }, 'trig')} />
+          {entity.collider.shape !== 'mesh' && entity.collider.shape !== 'convex' && <ColliderHandlesToggle />}
+          <p className="hint">Sizes are multiplied by the transform scale.</p>
+        </Section>
+      )}
+
+      {entity.joint && (
+        <JointSection entity={entity} set={(patch, field) => setComponent('joint', patch, field)} onRemove={removeComponent && (() => removeComponent('joint'))} />
+      )}
+
+    </>
   )
 }
 

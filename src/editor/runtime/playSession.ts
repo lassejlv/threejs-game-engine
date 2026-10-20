@@ -4,9 +4,10 @@ import { log } from '../console'
 import type { Animator } from './animator'
 import type { ParticleEmitter } from './particles'
 import { Navigation } from './navigation'
+import { drawUiElement, isLive } from './sceneUi'
 import { Timers } from './timers'
 import { GameUi } from './gameUi'
-import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
+import type { EntityDoc, ParamValue, ProjectDoc, UiElementDoc } from '../document'
 import {
   type AudioSourceApi,
   type Behavior,
@@ -71,6 +72,8 @@ export class PlaySession {
       return false
     }
   })
+  /** Scene UI elements whose text or bar follows ctx.globals, redrawn every frame. */
+  private liveUi: UiElementDoc[] = []
   /** Pathfinding grid and walking agents (`ctx.nav`). */
   readonly navigation: Navigation
   /** Script-to-script events (`ctx.emit` / `ctx.on`). */
@@ -117,6 +120,17 @@ export class PlaySession {
 
   connect(runtime: SessionRuntime): void {
     this.runtime = runtime
+  }
+
+  /** Shows the scene's editor-made UI. Buttons load a scene or emit an event; `{key}` text follows ctx.globals. */
+  showSceneUi(elements: UiElementDoc[]): void {
+    for (const el of elements) {
+      drawUiElement(this.ui, el, this.globals, this.assets, () => {
+        if (el.action === 'loadScene' && el.target) this.pendingScene = el.target
+        else if (el.action === 'emit' && el.target) this.emit(el.target, { button: el.name })
+      })
+    }
+    this.liveUi = elements.filter(isLive)
   }
 
   handle(entity: Entity): Handle | undefined {
@@ -209,6 +223,7 @@ export class PlaySession {
         name: 'ui.labels',
         phase: 'render',
         run: (engine) => {
+          for (const el of this.liveUi) drawUiElement(this.ui, el, this.globals, this.assets)
           // The listener rides on whichever camera is active (game or editor view).
           if (this.listener.parent !== engine.camera) engine.camera.add(this.listener)
           this.ui.update(engine.camera, (h) => engine.world.isAlive(h.entity))

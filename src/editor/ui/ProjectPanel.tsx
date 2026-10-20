@@ -5,6 +5,7 @@ import { assetReferences, componentDefaults, createEntity } from '../document'
 import {
   addEntity,
   addPrefabInstance,
+  createVariantAction,
   assetLibrary,
   createSceneAction,
   createScript,
@@ -179,6 +180,9 @@ function ScenesAndPrefabs() {
               </button>
               <button type="button" disabled={playing} onClick={() => addPrefabInstance(prefab.id, sceneView.spawnPoint())}>
                 Place
+              </button>
+              <button type="button" disabled={playing} onClick={() => createVariantAction(prefab.id)} title="A new prefab that starts as a copy of this one and follows its changes, except what you override">
+                Variant
               </button>
               <button
                 type="button"

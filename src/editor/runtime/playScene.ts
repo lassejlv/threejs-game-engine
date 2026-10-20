@@ -265,6 +265,7 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
         },
       })
       const { mainCamera } = builder.instantiate(depthFirst(expandEntities(scene.entities, doc.prefabs)))
+      session.showSceneUi(scene.ui)
 
       if (mainCamera) engine.camera = mainCamera
       else {

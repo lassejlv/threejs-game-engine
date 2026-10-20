@@ -1,8 +1,11 @@
 import { type DragEvent, type ReactNode, useMemo, useState } from 'react'
 import { useStore } from '../../react'
-import type { EntityDoc } from '../document'
+import type { EntityDoc, UiElementDoc } from '../document'
 import {
   addPrefabInstance,
+  addUiElement,
+  currentScene,
+  selectUi,
   createPrefab,
   deleteEntities,
   duplicateEntities,
@@ -234,6 +237,7 @@ export function Hierarchy() {
         onDrop={(e) => onDrop(e, null)}
         onClick={(e) => e.target === e.currentTarget && select(null)}
       >
+        {!prefabMode && <ScreenUiList />}
         {entities.length === 0 ? (
           <p className="empty">Empty scene. Use + to add objects.</p>
         ) : filter && filter.matches.size === 0 ? (
@@ -243,6 +247,43 @@ export function Hierarchy() {
         )}
       </div>
     </aside>
+  )
+}
+
+const UI_TYPES: [UiElementDoc['type'], string][] = [
+  ['text', 'Text'],
+  ['button', 'Button'],
+  ['bar', 'Bar'],
+  ['image', 'Image'],
+]
+
+/** The scene's screen UI elements (laid out in the Game view). */
+function ScreenUiList() {
+  const ui = useStore(editorStore, (s) => currentScene(s).ui)
+  const selected = useStore(editorStore, (s) => s.uiSelection)
+  const playing = useStore(editorStore, (s) => s.mode === 'play')
+  return (
+    <div className="screen-ui" role="group" aria-label="Screen UI">
+      <div className="screen-ui-header">
+        <span>Screen UI</span>
+        {!playing && <Menu label={<Icon name="plus" />} items={UI_TYPES.map(([type, label]) => ({ label, onSelect: () => addUiElement(type) }))} />}
+      </div>
+      {ui.map((el) => (
+        <div
+          key={el.id}
+          className={`tree-row ${selected === el.id ? 'selected primary' : ''} ${el.visible ? '' : 'inactive'}`}
+          style={{ paddingLeft: 22 }}
+          onClick={() => {
+            selectUi(el.id)
+            editorStore.set({ view: 'game' })
+          }}
+        >
+          <Icon name="ui" className="icon-ui" />
+          <span className="tree-name">{el.name}</span>
+          <span className="tree-meta">{el.type}</span>
+        </div>
+      ))}
+    </div>
   )
 }
 

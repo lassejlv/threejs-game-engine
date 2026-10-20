@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   assetReferences,
+  componentDefaults as defaults,
+  createVariant,
   cloneSubtree,
   componentDefaults,
   createEntity,
@@ -123,5 +125,38 @@ describe('compileScript', () => {
     expect(uses).toEqual([expect.stringContaining('Normal map'), 'Bonus Room: sky'])
     expect(assetReferences(doc, 'snd', 'jump.mp3')).toEqual([`Script ${doc.scripts[0].name}`])
     expect(assetReferences(doc, 'nothing', 'unused.glb')).toEqual([])
+  })
+
+  it('applies per-part overrides to prefab instances', () => {
+    const root = createEntity('Lamp', { mesh: { ...defaults.mesh(), color: '#ffffff' } })
+    const bulb = createEntity('Bulb', { parent: root.id, light: { ...defaults.light(), intensity: 1 } })
+    const prefab: PrefabDoc = { id: 'lamp', name: 'Lamp', entities: [root, bulb] }
+    const instance = instantiatePrefab(prefab, {
+      overrides: { [root.id]: { mesh: { color: '#ff0000' } }, [bulb.id]: { light: { intensity: 5 }, name: 'Red bulb', camera: { fov: 10 } } },
+    })
+    const [outRoot, outBulb] = expandEntities([instance], [prefab])
+    expect(outRoot.mesh?.color).toBe('#ff0000')
+    expect(outRoot.mesh?.roughness).toBe(defaults.mesh().roughness) // untouched fields stay
+    expect(outBulb.light?.intensity).toBe(5)
+    expect(outBulb.name).toBe('Red bulb')
+    expect(outBulb.camera).toBeUndefined() // overrides never add components
+    expect(root.mesh?.color).toBe('#ffffff') // the prefab itself is unchanged
+  })
+
+  it('makes variants that inherit from their base until overridden', () => {
+    const root = createEntity('Enemy', { mesh: { ...defaults.mesh(), color: '#00ff00', shape: 'sphere' } })
+    const base: PrefabDoc = { id: 'enemy', name: 'Enemy', entities: [root] }
+    const variant = createVariant(base, 'Boss')
+    variant.entities[0].overrides = { [root.id]: { mesh: { color: '#000000' } } }
+    const prefabs = [base, variant]
+    const plain = expandEntities([instantiatePrefab(variant)], prefabs)[0]
+    expect(plain.mesh?.color).toBe('#000000')
+    expect(plain.mesh?.shape).toBe('sphere')
+    // Changing the base shows up in the variant.
+    root.mesh = { ...root.mesh!, shape: 'box' }
+    expect(expandEntities([instantiatePrefab(variant)], prefabs)[0].mesh?.shape).toBe('box')
+    // An instance of the variant can override again, keyed by the variant's own parts.
+    const instance = instantiatePrefab(variant, { overrides: { [variant.entities[0].id]: { mesh: { color: '#ffffff' } } } })
+    expect(expandEntities([instance], prefabs)[0].mesh?.color).toBe('#ffffff')
   })
 })

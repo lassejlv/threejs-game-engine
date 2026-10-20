@@ -5,6 +5,8 @@ import { log } from './console'
 import {
   cloneSubtree,
   createScene,
+  createUiElement,
+  createVariant,
   emptyProject,
   type EntityDoc,
   expandEntities,
@@ -16,6 +18,7 @@ import {
   type SceneDoc,
   type ScriptDoc,
   subtreeIds,
+  type UiElementDoc,
 } from './document'
 import { activeSessions } from './runtime/playSession'
 import { sampleProject } from './sample'
@@ -33,6 +36,8 @@ export interface EditorState {
   lastScene: string
   /** Selected entity ids; the last one is the primary (gizmo, inspector). */
   selection: string[]
+  /** Selected screen UI element of the current scene (exclusive with `selection`). */
+  uiSelection: string | null
   tool: Tool
   snap: boolean
   /** Draw collider outlines for every entity (the selection's are always drawn). */
@@ -81,6 +86,7 @@ export const editorStore = createStore<EditorState>({
   editing: { kind: 'scene', id: initialDoc.scenes[0].id },
   lastScene: initialDoc.scenes[0].id,
   selection: [],
+  uiSelection: null,
   tool: 'translate',
   snap: false,
   showColliders: false,
@@ -312,10 +318,52 @@ export function primarySelection(s: EditorState = state()): string | null {
 
 /** Selects one entity, or toggles it into the selection when `additive`. */
 export function select(id: string | null, additive = false): void {
-  if (id === null) return editorStore.set({ selection: [] })
+  if (id === null) return editorStore.set({ selection: [], uiSelection: null })
   const current = state().selection
-  if (!additive) return editorStore.set({ selection: [id] })
-  editorStore.set({ selection: current.includes(id) ? current.filter((x) => x !== id) : [...current, id] })
+  if (!additive) return editorStore.set({ selection: [id], uiSelection: null })
+  editorStore.set({ selection: current.includes(id) ? current.filter((x) => x !== id) : [...current, id], uiSelection: null })
+}
+
+// ---------------------------------------------------------------------------
+// Screen UI (per scene)
+
+export function selectUi(id: string | null): void {
+  editorStore.set({ uiSelection: id, selection: [] })
+}
+
+function currentSceneId(): string | null {
+  const s = state()
+  return s.editing.kind === 'scene' ? s.editing.id : null
+}
+
+export function addUiElement(type: UiElementDoc['type']): void {
+  const sceneId = currentSceneId()
+  if (!sceneId) return log('warn', 'Screen UI belongs to scenes: open a scene to add it.')
+  const scene = state().doc.scenes.find((s) => s.id === sceneId)!
+  const names = new Set(scene.ui.map((u) => u.name))
+  const base = type[0].toUpperCase() + type.slice(1)
+  let name = base
+  for (let i = 2; names.has(name); i++) name = `${base} ${i}`
+  const element = createUiElement(type, name)
+  updateScene(sceneId, { ui: [...scene.ui, element] }, { label: `Add UI ${name}` })
+  // Screen UI is laid out in the Game view.
+  editorStore.set({ uiSelection: element.id, selection: [], view: 'game' })
+}
+
+export function updateUiElement(id: string, patch: Partial<UiElementDoc>, options?: CommitOptions): void {
+  const sceneId = currentSceneId()
+  const scene = sceneId && state().doc.scenes.find((s) => s.id === sceneId)
+  if (!scene) return
+  updateScene(scene.id, { ui: scene.ui.map((u) => (u.id === id ? { ...u, ...patch } : u)) }, options)
+}
+
+export function deleteUiElement(id: string): void {
+  const sceneId = currentSceneId()
+  const scene = sceneId && state().doc.scenes.find((s) => s.id === sceneId)
+  const element = scene && scene.ui.find((u) => u.id === id)
+  if (!scene || !element) return
+  updateScene(scene.id, { ui: scene.ui.filter((u) => u.id !== id) }, { label: `Delete UI ${element.name}` })
+  if (state().uiSelection === id) editorStore.set({ uiSelection: null })
 }
 
 export function updateEntity(
@@ -510,6 +558,19 @@ export function unpackPrefab(id: string): void {
   const next = [...list]
   next.splice(index, 1, ...plain)
   setEntities(next, { label: `Unpack ${instance.name}` })
+}
+
+/** Adds a variant of a prefab and opens it, ready for overrides. */
+export function createVariantAction(baseId: string): void {
+  const d = state().doc
+  const base = d.prefabs.find((p) => p.id === baseId)
+  if (!base) return
+  const names = new Set(d.prefabs.map((p) => p.name))
+  let name = `${base.name} Variant`
+  for (let i = 2; names.has(name); i++) name = `${base.name} Variant ${i}`
+  const variant = createVariant(base, name)
+  commit({ ...d, prefabs: [...d.prefabs, variant] }, { label: `Create variant ${name}` })
+  openPrefab(variant.id)
 }
 
 export function renamePrefab(id: string, name: string): void {

@@ -7,6 +7,7 @@ import {
   attachEngine,
   copySelection,
   deleteEntities,
+  deleteUiElement,
   duplicateEntities,
   editorStore,
   pasteClipboard,
@@ -175,7 +176,10 @@ function useShortcuts() {
       else if (key === 'r') editorStore.set({ tool: 'scale' })
       else if (key === 'f') sceneView.focusSelection()
       else if (key === 'escape') select(null)
-      else if ((key === 'delete' || key === 'backspace') && state.selection.length) {
+      else if ((key === 'delete' || key === 'backspace') && state.uiSelection) {
+        e.preventDefault()
+        deleteUiElement(state.uiSelection)
+      } else if ((key === 'delete' || key === 'backspace') && state.selection.length) {
         e.preventDefault()
         deleteEntities()
       }

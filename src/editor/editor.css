@@ -1008,3 +1008,27 @@ body.resizing canvas {
 .live-flag.on {
   color: #5cff8a;
 }
+.screen-ui {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+.screen-ui-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 2px 10px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.tree-meta {
+  margin-left: auto;
+  padding-right: 8px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.icon-ui {
+  color: #5cc8ff;
+}
