@@ -6,8 +6,9 @@ export default defineConfig({
   plugins: [react()],
   build: {
     target: 'es2022',
-    // three.js alone is ~700 kB minified; keep it in its own long-cached chunk.
-    chunkSizeWarningLimit: 800,
+    // three.js (~740 kB) has its own long-cached chunk. Monaco and its
+    // TypeScript worker are big but only load when a script is opened.
+    chunkSizeWarningLimit: 8000,
     rolldownOptions: {
       output: {
         codeSplitting: {
