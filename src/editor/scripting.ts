@@ -111,9 +111,9 @@ export interface Behavior {
 
 export const SCRIPT_TEMPLATE = `// Lifecycle: start, fixedUpdate, update, lateUpdate,
 // onCollisionEnter(ctx, other), onCollisionExit, onDestroy.
-// ctx: object, body, params, input, time, hud, find(name), destroy(), log()
-// THREE is available as a global.
+// Type "ctx." for everything a script can do. THREE is a global.
 
+/** @type {import('engine').Script} */
 export default {
   params: { speed: 90 },
 

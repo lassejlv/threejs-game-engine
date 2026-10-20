@@ -1,0 +1,258 @@
+/**
+ * Type declarations for the script editor (Monaco). Scripts annotate their
+ * default export with `@type {import('engine').Script}`, so `ctx` and
+ * lifecycle hooks are fully typed. THREE's common classes are typed (as
+ * namespace T3); anything else on THREE falls back to `any`.
+ */
+export const SCRIPT_TYPES = `
+declare module 'engine' {
+  type ParamValue = number | string | boolean
+  interface Vec3Like { x: number; y: number; z: number }
+
+  interface Handle {
+    readonly entity: number
+    readonly name: string
+    readonly object: T3.Object3D
+    /** Rigid body state (position, velocity, grounded...) when the entity has one. */
+    readonly body: RigidBody | undefined
+  }
+
+  interface RigidBody {
+    position: T3.Vector3
+    velocity: T3.Vector3
+    rotation: T3.Quaternion
+    grounded: boolean
+    gravityScale: number
+    kinematic: boolean
+    character: boolean
+  }
+
+  interface Input {
+    /** KeyboardEvent.code ('KeyW', 'Space'), 'Mouse0'..'Mouse2' or 'GamepadA' etc. */
+    isDown(codes: string | string[]): boolean
+    wasPressed(codes: string | string[]): boolean
+    wasReleased(codes: string | string[]): boolean
+    /** -1, 0 or 1. */
+    axis(negative: string | string[], positive: string | string[]): number
+    bind(action: string, codes: string[]): void
+    action(name: string): boolean
+    actionPressed(name: string): boolean
+    requestPointerLock(): void
+    exitPointerLock(): void
+    readonly pointer: { x: number; y: number; dx: number; dy: number; wheel: number; locked: boolean }
+    readonly gamepad: { connected: boolean; axes: [number, number, number, number] }
+  }
+
+  interface Time {
+    /** Seconds since the scene started (scaled). */
+    readonly elapsed: number
+    readonly delta: number
+    readonly fixedDelta: number
+    readonly frame: number
+    scale: number
+  }
+
+  type Anchor = 'top-left' | 'top' | 'top-right' | 'left' | 'center' | 'right' | 'bottom-left' | 'bottom' | 'bottom-right'
+  interface UiStyle { anchor?: Anchor; x?: number; y?: number; size?: number; color?: string; background?: string; width?: number }
+
+  interface Ui {
+    text(id: string, text: string | number, style?: UiStyle): void
+    button(id: string, label: string, onClick: () => void, style?: UiStyle): void
+    /** value is 0..1 */
+    bar(id: string, value: number, style?: UiStyle & { label?: string; fill?: string }): void
+    /** Text that follows an entity in the world. */
+    label(id: string, text: string | number, target: Handle, style?: { offsetY?: number; size?: number; color?: string }): void
+    remove(id: string): void
+    clear(): void
+  }
+
+  interface Hud {
+    set(key: string, value: string | number): void
+    remove(key: string): void
+    message(text: string | null): void
+  }
+
+  interface PhysicsHit { handle: Handle; point: T3.Vector3; normal: T3.Vector3; distance: number }
+  interface Physics {
+    raycast(origin: T3.Vector3, direction: T3.Vector3, maxDistance?: number, options?: { triggers?: boolean; ignoreSelf?: boolean }): PhysicsHit | null
+    applyImpulse(target: Handle, impulse: T3.Vector3): void
+  }
+
+  interface Sound {
+    /** One-shot from an audio asset name; at makes it 3D. */
+    play(asset: string, options?: { volume?: number; at?: Vec3Like }): void
+    tone(frequency: number, duration?: number, options?: { type?: 'sine' | 'square' | 'sawtooth' | 'triangle'; volume?: number; delay?: number }): void
+  }
+
+  interface AudioSource { play(): void; stop(): void; setVolume(volume: number): void; readonly playing: boolean }
+
+  interface Animation {
+    play(clip: string, options?: { fade?: number; loop?: boolean; speed?: number }): void
+    stop(fade?: number): void
+    readonly clips: string[]
+    readonly current: string | null
+  }
+
+  interface Context<P = Record<string, any>> extends Handle {
+    /** Inspector-editable values declared in params. */
+    readonly params: P
+    readonly input: Input
+    readonly time: Time
+    /** Per-instance scratch space. */
+    readonly state: Record<string, any>
+    /** Shared by every script in the scene. */
+    readonly globals: Record<string, any>
+    readonly hud: Hud
+    readonly ui: Ui
+    readonly physics: Physics
+    readonly sound: Sound
+    readonly audio: AudioSource | undefined
+    readonly animation: Animation | undefined
+    readonly sceneName: string
+    readonly engine: any
+    find(name: string): Handle | undefined
+    spawn(prefab: string, options?: { position?: Vec3Like; rotation?: Vec3Like; parent?: Handle }): Handle | undefined
+    loadScene(name: string): void
+    destroy(target?: Handle): void
+    log(...args: unknown[]): void
+    warn(...args: unknown[]): void
+    error(...args: unknown[]): void
+  }
+
+  interface Script<P extends Record<string, ParamValue> = Record<string, any>> {
+    /** Defaults for inspector fields; the type comes from the value ('#rrggbb' = color). */
+    params?: P
+    start?(ctx: Context<P>): void
+    /** Fixed 60 Hz step, before physics. */
+    fixedUpdate?(ctx: Context<P>, dt: number): void
+    update?(ctx: Context<P>, dt: number): void
+    /** After update (cameras, followers). */
+    lateUpdate?(ctx: Context<P>, dt: number): void
+    onCollisionEnter?(ctx: Context<P>, other: Handle): void
+    onCollisionExit?(ctx: Context<P>, other: Handle): void
+    onDestroy?(ctx: Context<P>): void
+  }
+}
+
+declare namespace T3 {
+  class Vector3 {
+    constructor(x?: number, y?: number, z?: number)
+    x: number; y: number; z: number
+    set(x: number, y: number, z: number): this
+    setScalar(s: number): this
+    setX(x: number): this; setY(y: number): this; setZ(z: number): this
+    copy(v: Vector3): this
+    clone(): Vector3
+    add(v: Vector3): this
+    sub(v: Vector3): this
+    addScaledVector(v: Vector3, s: number): this
+    multiplyScalar(s: number): this
+    multiply(v: Vector3): this
+    divideScalar(s: number): this
+    negate(): this
+    normalize(): this
+    length(): number
+    lengthSq(): number
+    setLength(l: number): this
+    dot(v: Vector3): number
+    cross(v: Vector3): this
+    crossVectors(a: Vector3, b: Vector3): this
+    distanceTo(v: Vector3): number
+    lerp(v: Vector3, alpha: number): this
+    lerpVectors(a: Vector3, b: Vector3, alpha: number): this
+    applyQuaternion(q: Quaternion): this
+    applyEuler(e: Euler): this
+    equals(v: Vector3): boolean
+    toArray(): [number, number, number]
+  }
+  class Vector2 {
+    constructor(x?: number, y?: number)
+    x: number; y: number
+    set(x: number, y: number): this
+    clone(): Vector2
+    length(): number
+  }
+  class Quaternion {
+    constructor(x?: number, y?: number, z?: number, w?: number)
+    x: number; y: number; z: number; w: number
+    setFromAxisAngle(axis: Vector3, angle: number): this
+    setFromEuler(e: Euler): this
+    multiply(q: Quaternion): this
+    slerp(q: Quaternion, t: number): this
+    copy(q: Quaternion): this
+    clone(): Quaternion
+    invert(): this
+  }
+  class Euler {
+    constructor(x?: number, y?: number, z?: number, order?: string)
+    x: number; y: number; z: number
+    set(x: number, y: number, z: number): this
+    copy(e: Euler): this
+  }
+  class Color {
+    constructor(color?: string | number)
+    r: number; g: number; b: number
+    set(color: string | number): this
+    setHSL(h: number, s: number, l: number): this
+    lerp(c: Color, alpha: number): this
+    getHexString(): string
+  }
+  class Object3D {
+    name: string
+    visible: boolean
+    position: Vector3
+    rotation: Euler
+    quaternion: Quaternion
+    scale: Vector3
+    parent: Object3D | null
+    children: Object3D[]
+    userData: Record<string, any>
+    add(...objects: Object3D[]): this
+    remove(...objects: Object3D[]): this
+    lookAt(x: number | Vector3, y?: number, z?: number): void
+    rotateX(angle: number): this
+    rotateY(angle: number): this
+    rotateZ(angle: number): this
+    translateX(d: number): this
+    translateY(d: number): this
+    translateZ(d: number): this
+    getWorldPosition(target: Vector3): Vector3
+    getWorldQuaternion(target: Quaternion): Quaternion
+    getWorldDirection(target: Vector3): Vector3
+    traverse(callback: (object: Object3D) => void): void
+    getObjectByName(name: string): Object3D | undefined
+    [key: string]: any
+  }
+  const MathUtils: {
+    degToRad(degrees: number): number
+    radToDeg(radians: number): number
+    clamp(value: number, min: number, max: number): number
+    lerp(a: number, b: number, t: number): number
+    damp(x: number, y: number, lambda: number, dt: number): number
+    randFloat(low: number, high: number): number
+    randInt(low: number, high: number): number
+    smoothstep(x: number, min: number, max: number): number
+    [key: string]: any
+  }
+}
+
+/** three.js. Common classes are typed; everything else is any. */
+declare const THREE: {
+  Vector3: typeof T3.Vector3
+  Vector2: typeof T3.Vector2
+  Quaternion: typeof T3.Quaternion
+  Euler: typeof T3.Euler
+  Color: typeof T3.Color
+  Object3D: typeof T3.Object3D
+  MathUtils: typeof T3.MathUtils
+  [key: string]: any
+}
+
+/** Damping and movement helpers from the engine. */
+declare const helpers: {
+  damp(current: number, target: number, lambda: number, dt: number): number
+  dampAngle(current: number, target: number, lambda: number, dt: number): number
+  moveTowards(current: number, target: number, maxDelta: number): number
+  teleport(body: import('engine').RigidBody, position: T3.Vector3): void
+}
+`

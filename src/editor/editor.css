@@ -694,16 +694,12 @@
   border: 1px solid var(--border);
   border-radius: 4px;
 }
-.script-editor textarea {
+.script-host {
+  position: relative;
   flex: 1;
-  resize: none;
-  padding: 12px 14px;
-  font: 13px/1.55 var(--mono);
-  tab-size: 2;
-  white-space: pre;
-  overflow: auto;
-  color: #d6deeb;
+  min-height: 0;
   background: #13161b;
-  border: 0;
-  outline: none;
+}
+.script-loading {
+  margin: 16px;
 }

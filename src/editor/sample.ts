@@ -23,6 +23,7 @@ function prefab(name: string, root: Partial<EntityDoc>, children: ((rootId: stri
 }
 
 const PORTAL_SCRIPT = `// Loads another scene when the player walks in. Needs a trigger collider.
+/** @type {import('engine').Script} */
 export default {
   params: { scene: 'Bonus Room', player: 'Player' },
 
@@ -37,6 +38,7 @@ export default {
 `
 
 const LAUNCHER_SCRIPT = `// Press E to throw a ball (spawns the "Ball" prefab).
+/** @type {import('engine').Script} */
 export default {
   params: { prefab: 'Ball', force: 9 },
 
@@ -53,6 +55,7 @@ export default {
 
 const MANAGER_SCRIPT = `// Timer, progress bar and a name tag over the player.
 // Offers a restart once every coin is collected.
+/** @type {import('engine').Script} */
 export default {
   params: { counter: 'Coins', player: 'Player' },
 

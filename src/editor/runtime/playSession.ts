@@ -10,6 +10,7 @@ import {
   type Handle,
   type HudApi,
   type PhysicsApi,
+  compileScript,
   resolveBehavior,
   type ScriptContext,
   type SoundApi,
@@ -18,6 +19,10 @@ import {
 import type { AssetResolver } from './nodes'
 
 interface Instance {
+  /** `builtin:Name` or a project script id. */
+  scriptId: string
+  /** Inspector overrides, reapplied when the script hot-reloads with new params. */
+  overrides: Record<string, ParamValue>
   behavior: Behavior
   ctx: ScriptContext
   started: boolean
@@ -25,6 +30,9 @@ interface Instance {
 }
 
 const Scripts = defineComponent<Instance[]>('Scripts')
+
+/** Running sessions, so the editor can hot-reload scripts saved during play. */
+export const activeSessions = new Set<PlaySession>()
 
 type Lifecycle = 'fixedUpdate' | 'update' | 'lateUpdate'
 
@@ -113,7 +121,14 @@ export class PlaySession {
         log('error', `"${entity.name}": script failed to compile: ${behavior.message}`)
         continue
       }
-      instances.push({ behavior, ctx: this.context(handle, behavior, ref.params), started: false, failed: false })
+      instances.push({
+        scriptId: ref.script,
+        overrides: ref.params,
+        behavior,
+        ctx: this.context(handle, behavior, ref.params),
+        started: false,
+        failed: false,
+      })
     }
     if (instances.length) this.engine.world.add(handle.entity, Scripts, instances)
   }
@@ -127,9 +142,11 @@ export class PlaySession {
         order: -50, // before physics integrates
         run: run('fixedUpdate'),
         init: (engine) => {
+          activeSessions.add(this)
           const offEnter = engine.events.on('collisionEnter', ({ a, b }) => this.collision('onCollisionEnter', a, b))
           const offExit = engine.events.on('collisionExit', ({ a, b }) => this.collision('onCollisionExit', a, b))
           return () => {
+            activeSessions.delete(this)
             offEnter()
             offExit()
             this.ui.dispose()
@@ -160,6 +177,29 @@ export class PlaySession {
         },
       },
     ]
+  }
+
+  /** Swaps in a new version of a script for every running instance, keeping their state. */
+  reloadScript(scriptId: string, name: string, source: string): void {
+    const behavior = compileScript(name, source)
+    if (behavior instanceof Error) {
+      log('error', `${name}: compile error, keeping the running version: ${behavior.message}`)
+      return
+    }
+    let count = 0
+    for (const instances of this.engine.world.store(Scripts).values) {
+      for (const instance of instances) {
+        if (instance.scriptId !== scriptId) continue
+        instance.behavior = behavior
+        instance.failed = false
+        const params = instance.ctx.params as Record<string, ParamValue>
+        for (const key in behavior.params) {
+          if (!(key in params)) params[key] = key in instance.overrides ? instance.overrides[key] : behavior.params[key]
+        }
+        count++
+      }
+    }
+    log('log', `Hot-reloaded ${name} (${count} instance${count === 1 ? '' : 's'})`)
   }
 
   private context(handle: Handle, behavior: Behavior, overrides: Record<string, ParamValue>): ScriptContext {

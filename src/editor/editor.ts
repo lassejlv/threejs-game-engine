@@ -17,6 +17,7 @@ import {
   type ScriptDoc,
   subtreeIds,
 } from './document'
+import { activeSessions } from './runtime/playSession'
 import { sampleProject } from './sample'
 import { SCRIPT_TEMPLATE } from './scripting'
 
@@ -505,6 +506,10 @@ export function createScript(): ScriptDoc {
 export function updateScript(id: string, patch: Partial<ScriptDoc>): void {
   const scripts = state().doc.scripts.map((s) => (s.id === id ? { ...s, ...patch } : s))
   commit({ ...state().doc, scripts }, { allowInPlay: true })
+  const script = scripts.find((s) => s.id === id)
+  if (script && state().mode === 'play') {
+    for (const session of activeSessions) session.reloadScript(id, script.name, script.source)
+  }
 }
 
 export function deleteScript(id: string): void {
