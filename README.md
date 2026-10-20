@@ -1,50 +1,69 @@
 # Three.js Game Engine
 
-A Unity-style game engine that runs in the browser. You build scenes in the editor, press Play to test them, and export finished games as a single HTML file.
+A Unity-style game engine that runs in the browser. You build scenes in the editor, press Play to test them, and export finished games as a single HTML file or an installable web app.
 It is built with TypeScript, React 19, Vite 8, three.js r186 and Rapier physics.
 
 ```bash
 npm install
 npm run dev        # opens the editor at http://localhost:5173 (builds the game player first)
-npm test           # unit tests (ECS, physics, Rapier, document, scripting, particles)
+npm test           # unit tests (engine, physics, navigation, document, editor, scripting, runtime)
+npm run test:e2e   # browser smoke test: loads the editor, plays, collects a coin
 npm run build      # typecheck + production build of the editor
 ```
 
-On first launch the editor opens **Coin Rush**, a sample project made only with editor features: prefabs, two scenes linked by portals, built-in scripts and project scripts. Press ▶ (Ctrl/Cmd+P) to play it.
-In play mode: WASD moves, Space jumps, Shift sprints, E throws a ball, drag the mouse to look.
+CI (GitHub Actions) runs the typecheck, unit tests, build and the browser smoke test on every push and pull request.
+
+On first launch the editor opens **Coin Rush**, a sample project made only with editor features: prefabs and a prefab variant, two scenes linked by portals, joints, particles, a patrolling hazard, a checkpoint, an elevator, a pathfinding ghost, editor-made screen UI, built-in scripts and project scripts. Press ▶ (Ctrl/Cmd+P) to play it.
+In play mode: WASD moves, Space jumps, Shift sprints, E throws a ball, drag the mouse to look. On touch screens an on-screen joystick and buttons appear.
 
 ## The editor
 
 | Area      | What it does |
 | --------- | ------------ |
-| Toolbar   | File (new / open / export JSON), undo/redo, move/rotate/scale tools, snapping, Create, Play / Pause / Step, and Build (run or download the game) |
-| Hierarchy | Entity tree. Shift/Ctrl/Cmd-click selects several entities, double-click renames, drag reparents, and the prefab button turns the selection into a prefab |
-| Viewport  | **Scene** tab: orbit camera, gizmos (they move every selected entity), click to select, collider outlines. **Game** tab: the view through the main camera. Play switches to Game automatically |
-| Inspector | Transform and components, plus Add Component. Prefab instances show Open / Unpack and script parameter overrides. With nothing selected it shows scene settings |
-| Project   | Scenes (open, rename, set the start scene), prefabs (edit, drag into the hierarchy, place), scripts, and assets with thumbnails |
+| Toolbar   | File (new / open / export JSON / Project Settings), undo/redo, move/rotate/scale tools, snapping, Create, Play / Pause / Step, and Build (run, download `.html`, download installable web app `.zip`) |
+| Hierarchy | Screen UI elements, then the entity tree. Search by name or component (`t:light`, `t:script`, `t:collider`…). Shift/Ctrl/Cmd-click selects several entities, double-click renames, drag reparents, and the prefab button turns the selection into a prefab |
+| Viewport  | **Scene** tab: orbit camera, gizmos (they move every selected entity), click to select, collider outlines and draggable collider handles. **Game** tab: the view through the main camera, where screen UI is laid out by dragging. Play switches to Game automatically. The Colliders toggle also draws physics shapes, joints and the navigation grid while playing |
+| Inspector | Transform and components, plus Add Component. Edits apply to every selected entity that has the field. Prefab instances can override any field of any part of their prefab. With nothing selected it shows scene settings. While playing, a **Live** panel shows the selected entity's runtime state and lets you tweak it |
+| Project   | Scenes (open, rename, set the start scene), prefabs (edit, place, create variants), scripts, and assets with thumbnails. Deleting an asset lists where it is used first |
 | Console   | Script logs and errors. A script that throws is disabled and reported with its line number; the game keeps running |
+| History   | Every undoable step with a readable name; click one to undo or redo to it |
 
 Panels can be resized by dragging their edges. Shortcuts: `W` `E` `R` pick the tool, `F` focuses the selection, `Del` deletes, `Ctrl/Cmd+D` duplicates, `Ctrl/Cmd+C` / `V` copy and paste, `Ctrl/Cmd+Z` / `Shift+Z` undo and redo, `Ctrl/Cmd+P` plays and stops, and `` ` `` toggles the stats panel.
 
 The project autosaves to localStorage. Assets (.glb models, .png/.jpg/.webp textures, .mp3/.ogg/.wav audio) are stored in IndexedDB.
 
+**Project Settings** (File menu): project name, start scene and export options; input actions and axes (record keys by pressing them) and touch controls; and 16 named physics layers with a collision matrix.
+
+### Scene settings
+
+- Sky: flat color, three-color gradient, or a 360° image; optional sky lighting (image-based lighting) and fog
+- Shadows: off / low / medium / high
+- Post-processing: exposure, bloom, vignette, saturation, contrast
+- Music: play a track (cross-fading from the previous scene's), keep the current one, or stop
+- Physics gravity, and the navigation grid used for pathfinding (cell size, agent radius and height, step, slope)
+
 ### Components
 
-- Mesh Renderer: 7 primitives, PBR material, texture
-- Model: glTF, with an animation clip, speed and loop
+- Mesh Renderer: 7 primitives; PBR material with color, normal, roughness, metalness and emissive maps, tiling, opacity and double-sided rendering
+- Model: glTF with a single clip or an **animation state machine** (states, 1D blends by a parameter, transitions on conditions like `speed > 0.1 && grounded`, triggers, or when a clip ends), up to four LOD levels and a cull distance
 - Light: directional, point, spot or hemisphere, with shadows
 - Camera: the *main* camera is used in play mode
 - Audio Source: 2D or 3D, loop, play on start
-- Particle Emitter: rate, burst and duration, point/sphere/box shapes, spread, gravity, drag, size, color and opacity over life, additive or normal blending, optional texture, world or local space. The Scene view previews it live, and **Auto destroy** turns it into a one-shot effect you can `spawn`
+- Particle Emitter: rate per second and per meter (trails), burst and duration, point/sphere/box shapes, spread, gravity, drag, size and opacity curves, color over life, spin, sprite sheets, additive or normal (sorted) blending, world or local space, and sub-emitters that fire where a parent's particles spawn or die. **Auto destroy** makes one-shot effects you can `spawn`
 - Rigid Body: dynamic, kinematic or character
-- Collider: box, sphere, capsule or cylinder, rotated with the entity, trigger option
+- Collider: box, sphere, capsule, cylinder, exact mesh or convex hull (built from the mesh or model); trigger option; a physics layer
+- Joint: hinge, ball, fixed, slider or spring to another body or the world, with limits and motors
 - Scripts
 
 ### Prefabs and scenes
 
 Select an entity and click the prefab button in the Hierarchy. The subtree becomes a prefab, and the entity becomes an instance of it. Changes made to the prefab (Project → click a prefab) apply to every instance.
-Each instance keeps its own transform, name and script parameter overrides. **Unpack** turns an instance back into plain entities.
-Prefabs can contain other prefabs. A project can have several scenes; the first one is where an exported game starts.
+An instance keeps its own transform, name and script parameters, and can override any component field on any part of the prefab (overridden parts are marked •; revert a part or everything). **Unpack** turns an instance back into plain entities.
+**Variant** creates a prefab based on another one: it follows the base and changes only what it overrides. Prefabs can contain other prefabs. A project can have several scenes; the start scene is where an exported game begins.
+
+### Screen UI
+
+Each scene has a list of screen UI elements (text, button, bar, image), added from the Hierarchy and laid out by dragging in the Game view. Text can show live values with `{key}` (from `ctx.globals`), bars can show a key or a `key/key` ratio, and buttons can load a scene or send an event without a script. Scripts change an element through `ctx.ui` using its name.
 
 ### Scripts
 
@@ -57,10 +76,13 @@ export default {
   // (number, boolean, string, or '#rrggbb' for a color).
   params: { speed: 90, enemy: 'Enemy' },
 
-  start(ctx) {},
+  start(ctx) {
+    ctx.every(1, () => ctx.log('tick'))
+  },
   fixedUpdate(ctx, dt) {},            // 60 Hz, runs before physics
   update(ctx, dt) {
     ctx.object.rotation.y += THREE.MathUtils.degToRad(ctx.params.speed) * dt
+    if (ctx.input.actionPressed('Jump')) ctx.tween(ctx.object.position, { y: 2 }, 0.4, { ease: 'backOut' })
   },
   lateUpdate(ctx, dt) {},
   onCollisionEnter(ctx, other) {
@@ -71,37 +93,49 @@ export default {
 
 | `ctx.` | |
 | ------ | - |
-| `object`, `body`, `params`, `state`, `globals`, `input`, `time` | the entity, its rigid body, its inspector values, per-instance and shared storage, input, time |
+| `object`, `body`, `params`, `state`, `globals`, `time` | the entity, its rigid body, its inspector values, per-instance and shared storage, time |
+| `input.action / actionPressed / getAxis` | named actions and axes from Project Settings (keyboard, mouse, gamepad and touch combined) |
 | `find(name)`, `spawn(prefab, { position })`, `destroy()`, `loadScene(name)` | entities and scenes |
-| `physics.raycast(origin, dir)`, `physics.applyImpulse(handle, v)` | Rapier queries and forces |
-| `ui.text / button / bar / label`, `hud.set / message` | in-game UI (DOM overlay) |
-| `sound.play(asset)`, `sound.tone(freq)`, `audio.play()` | one-shot sounds, a built-in synth, the entity's Audio Source |
-| `animation.play(clip, { fade, loop, speed })` | glTF animation |
+| `after(s, fn)`, `every(s, fn)`, `tween(target, to, s, { ease, loop, yoyo })` | timers and tweens on game time, cancelled with the entity |
+| `emit(name, data)`, `on(name, fn)` | events between scripts |
+| `save(key, value)`, `load(key, fallback)` | data that survives reloads (per project) |
+| `physics.raycast / sphereCast / overlap`, `applyImpulse / addForce / addTorque / setAngularVelocity` | Rapier queries and forces |
+| `nav.moveTo(point or entity)`, `nav.findPath`, `nav.randomPoint` | pathfinding on a grid baked from static colliders |
+| `ui.text / button / bar / image / label`, `hud.set / message` | in-game UI (DOM overlay) |
+| `sound.play(asset)`, `sound.tone(freq)`, `audio.play()`, `music.play(asset)`, `volume.set(group, v)` | one-shots, a built-in synth, the entity's Audio Source, cross-fading music, master/music/sfx volume |
+| `animation.play(clip or state)`, `animation.set(param, v)`, `animation.trigger(name)` | glTF animation and its state machine |
 | `particles.play() / stop() / burst(n) / clear()` | the entity's Particle Emitter |
 
-Built-in scripts: `PlayerController`, `FollowCamera`, `Collectible`, `Rotate`, `Bob`, `DestroyBelow`. `Collectible` can spawn an effect prefab where it was picked up (Coin Rush uses a `Sparkle` burst).
+Built-in scripts: `PlayerController`, `FollowCamera`, `Collectible`, `Rotate`, `Bob`, `DestroyBelow`, `MovingPlatform`, `Patrol`, `Health`, `Hazard`, `Checkpoint`, `Door`, `Chase` and `Wander`. They read the default input names (Jump, Sprint, Fire, Interact, MoveX/Y, LookX/Y), so remapping keys in Project Settings works for them too.
 
 ### Exporting a game
 
-**Build → Download game** writes one self-contained `.html` file containing the player, your project and every imported asset (as base64). Open it from disk or upload it to any static host (itch.io, GitHub Pages, Netlify).
-**Build → Run in new tab** opens the same build directly.
-The file is about 5 MB plus your assets (1.9 MB gzipped), and Rapier's WASM accounts for most of that.
+**Build → Download game** writes one self-contained `.html` file containing the player, your project and the assets it uses (as base64). Open it from disk or upload it to any static host (itch.io, GitHub Pages, Netlify).
+**Build → Download installable web app** adds a manifest, icons and an offline service worker in a `.zip`, so players can install the game and play offline.
+**Build → Run in new tab** opens a quick build directly.
+By default exports leave out unused assets, meshopt-compress models and re-encode textures as WebP when that is smaller (Project Settings → General).
+The player is about 5.3 MB plus your assets (1.9 MB gzipped), and Rapier's WASM accounts for most of that. Exported games show a loading screen and fade between scenes.
 
 ## Architecture
 
 ```
-src/engine/      runtime with no React or editor code: loop, ECS, input, assets, physics
-  physics/       built-in AABB physics, and the Rapier adapter used by the editor and exported games
-src/react/       <GameCanvas>, hooks, stats overlay
+src/engine/       runtime with no React or editor code: loop, ECS, input, assets, physics
+  physics/        built-in AABB physics, and the Rapier adapter (joints, queries, debug lines)
+  navigation/     the walkable grid and A* behind ctx.nav
+  render/         the post-processing pipeline
+src/react/        <GameCanvas>, hooks, stats overlay
 src/editor/
-  document.ts    the project format (v2: scenes, prefabs, scripts); expands prefab instances
-  editor.ts      editor state, undo/redo (with transactions for drags), actions, autosave
-  scripting.ts   script API, compiler, built-in scripts
-  scriptTypes.ts type declarations shown in Monaco
-  runtime/       turns documents into running worlds: edit view, play session,
-                 game UI, audio, animators, particles, collider outlines
-  ui/            the editor's React panels
-src/player/      standalone player for exported games (no React, no editor)
+  document.ts     the project format (v2: scenes, prefabs, scripts, settings); prefab expansion and overrides
+  editor.ts       editor state, labelled undo/redo (with transactions for drags), actions, autosave
+  scripting.ts    script API, compiler, built-in scripts
+  scriptTypes.ts  type declarations shown in Monaco
+  exportGame.ts   single-file and web-app exports, asset stripping and compression
+  runtime/        turns documents into running worlds: edit view, play session, environment and
+                  post-processing, instancing, particles, animation, navigation, timers, audio mixer,
+                  game and scene UI, touch controls, fades, collider outlines and handles
+  ui/             the editor's React panels
+src/player/       standalone player for exported games (no React, no editor)
+e2e/              browser smoke test
 ```
 
 The editor only ever edits the **document**. Edit mode renders it directly and rebuilds only the entities whose data changed. Play mode copies the document and turns it into a running ECS world with Rapier physics. Stop throws that world away. As in Unity, nothing that happens during play changes the scene, except script source edits, which hot-reload.
@@ -109,12 +143,14 @@ The exported player runs the same `runtime/` code, so games behave the same insi
 
 Performance:
 - The fixed-timestep simulation is interpolated, so motion stays smooth at 120/144 Hz.
+- In play mode, identical meshes are drawn as instanced batches (Coin Rush: 101 → 37 draw calls).
 - ECS queries are cached in sparse sets. React reads engine state through stores and never re-renders once per frame.
-- Rapier, the glTF loader and Monaco are lazy-loaded. The editor's first load is about 310 kB gzipped (React, three.js and the app).
+- Rapier, the glTF loader, post-processing, export compression and Monaco are lazy-loaded. The editor's first load is about 355 kB gzipped (React, three.js and the app).
 
 ## Known limits
 
-- Joints are not exposed in the editor yet.
-- Mesh colliders for imported models are not supported; models use primitive colliders.
-- Prefab overrides cover the transform, name, active flag and script parameters, not other component fields.
-- Exported games include every imported asset, even unused ones.
+- Joint frames are taken from the bodies' poses when play starts; joints can't be added or retargeted while playing.
+- Prefab overrides change fields of components a part already has; they can't add or remove components (use a variant and edit it).
+- LOD levels and blended animation states apply to static models and the model's own clips; LOD levels don't animate.
+- Navigation is a grid baked once per scene from static colliders; moving obstacles aren't avoided.
+- Export compression doesn't recompress textures embedded inside .glb files.
