@@ -1,4 +1,4 @@
-import { type Group, type PerspectiveCamera, Vector3 } from 'three'
+import { AudioListener, type Group, type PerspectiveCamera, Vector3 } from 'three'
 import {
   boxCollider,
   capsuleCollider,
@@ -133,8 +133,9 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
       applySettings(engine.scene, scene.settings)
 
       const physics = new RapierPhysics(engine, R)
-      const session = new PlaySession(engine, doc, physics)
-      const builder = new PlayBuilder(engine, new NodeFactory(engine, options.assets, false), session)
+      const listener = new AudioListener()
+      const session = new PlaySession(engine, doc, physics, listener, options.assets)
+      const builder = new PlayBuilder(engine, new NodeFactory(engine, options.assets, false, listener), session)
       session.connect({
         sceneName: scene.name,
         spawn: (prefabName, spawn) => {

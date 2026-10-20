@@ -1,3 +1,4 @@
+import { AudioContext as ThreeAudioContext } from 'three'
 import { createStore, type Engine } from '../engine'
 import { type AssetMeta, AssetLibrary } from './assetLibrary'
 import { log } from './console'
@@ -523,7 +524,8 @@ export function deleteScript(id: string): void {
 // Assets
 
 export async function importAssets(files: FileList | File[]): Promise<void> {
-  for (const file of files) {
+  // Copy first: input/drop FileLists are emptied as soon as the event handler returns.
+  for (const file of Array.from(files)) {
     try {
       const meta = await assetLibrary.import(file)
       editorStore.set((s) => ({ assets: [...s.assets, meta] }))
@@ -546,6 +548,8 @@ export function play(): void {
   const s = state()
   if (s.mode === 'play') return
   engineRef?.resume()
+  // Browsers only allow audio after a user gesture; Play is one.
+  void (ThreeAudioContext.getContext() as unknown as globalThis.AudioContext).resume()
   editorStore.set({
     mode: 'play',
     view: 'game',

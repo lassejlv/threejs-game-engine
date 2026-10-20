@@ -38,6 +38,21 @@ export interface PhysicsApi {
   applyImpulse(target: Handle, impulse: THREE.Vector3): void
 }
 
+export interface SoundApi {
+  /** One-shot sound from an audio asset (by file name). `at` makes it 3D. */
+  play(asset: string, options?: { volume?: number; at?: THREE.Vector3Like }): void
+  /** Synthesized beep: handy for prototyping without audio files. */
+  tone(frequency: number, duration?: number, options?: { type?: OscillatorType; volume?: number; delay?: number }): void
+}
+
+/** The entity's own Audio Source component. */
+export interface AudioSourceApi {
+  play(): void
+  stop(): void
+  setVolume(volume: number): void
+  readonly playing: boolean
+}
+
 export interface SpawnOptions {
   position?: THREE.Vector3Like
   /** Euler angles in degrees. */
@@ -58,6 +73,9 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   /** Screen-space UI: text, buttons, bars and world labels. */
   readonly ui: UiApi
   readonly physics: PhysicsApi
+  readonly sound: SoundApi
+  /** Present when the entity has an Audio Source. */
+  readonly audio: AudioSourceApi | undefined
   /** Name of the running scene. */
   readonly sceneName: string
   find(name: string): Handle | undefined
@@ -281,7 +299,7 @@ const FollowCamera: Behavior = {
 const Collectible: Behavior = {
   name: 'Collectible',
   description: 'Disappears when the target touches it and counts toward a HUD counter. Needs a trigger collider.',
-  params: { collector: 'Player', counter: 'Coins', winMessage: 'All collected!' },
+  params: { collector: 'Player', counter: 'Coins', winMessage: 'All collected!', sound: '' },
   start(ctx) {
     const p = ctx.params as { counter: string }
     const g = ctx.globals as Record<string, number>
@@ -290,13 +308,19 @@ const Collectible: Behavior = {
     ctx.hud.set(p.counter, `${g[`${p.counter}:got`]} / ${g[`${p.counter}:total`]}`)
   },
   onCollisionEnter(ctx, other) {
-    const p = ctx.params as { collector: string; counter: string; winMessage: string }
+    const p = ctx.params as { collector: string; counter: string; winMessage: string; sound: string }
     if (other.name !== p.collector) return
     const g = ctx.globals as Record<string, number>
     const got = ++g[`${p.counter}:got`]
     const total = g[`${p.counter}:total`]
     ctx.hud.set(p.counter, `${got} / ${total}`)
     if (got === total && p.winMessage) ctx.hud.message(p.winMessage)
+    // An audio asset name, or a synthesized two-note chime when empty.
+    if (p.sound) ctx.sound.play(p.sound)
+    else {
+      ctx.sound.tone(988, 0.07, { type: 'square', volume: 0.12 })
+      ctx.sound.tone(1319, 0.2, { type: 'square', volume: 0.12, delay: 0.07 })
+    }
     ctx.destroy()
   },
 }

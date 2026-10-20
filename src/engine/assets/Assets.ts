@@ -1,4 +1,4 @@
-import { LoadingManager, SRGBColorSpace, type Texture, TextureLoader } from 'three'
+import { AudioLoader, LoadingManager, SRGBColorSpace, type Texture, TextureLoader } from 'three'
 import type { GLTF, GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { createStore } from '../core/Store'
 import { disposeObject } from '../utils/dispose'
@@ -50,6 +50,11 @@ export class Assets {
       )
       return (await this.gltfLoader).loadAsync(url)
     })
+  }
+
+  /** Decoded audio for three.js `Audio` / `PositionalAudio`. */
+  audio(url: string): Promise<AudioBuffer> {
+    return this.load(`audio:${url}`, () => new AudioLoader(this.manager).loadAsync(url))
   }
 
   json<T>(url: string): Promise<T> {

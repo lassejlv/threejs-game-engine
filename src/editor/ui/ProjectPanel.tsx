@@ -236,13 +236,13 @@ function ProjectPanel() {
           />
         </div>
         {assets.length === 0 ? (
-          <p className="empty">Drop .glb models or .png/.jpg textures here.</p>
+          <p className="empty">Drop .glb models, .png/.jpg textures or .mp3/.ogg/.wav audio here.</p>
         ) : (
           <ul className="asset-list">
             {assets.map((a) => (
               <li key={a.id}>
                 <span className="asset">
-                  <Icon name={a.kind === 'model' ? 'model' : 'texture'} className={`icon-${a.kind}`} />
+                  <Icon name={a.kind} className={`icon-${a.kind}`} />
                   {a.name}
                   <span className="dim">{formatSize(a.size)}</span>
                 </span>

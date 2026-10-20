@@ -1,8 +1,20 @@
+import { Audio, type AudioListener, Object3D, PositionalAudio } from 'three'
 import { defineComponent, type Engine, type Entity, type RapierPhysics, type System } from '../../engine'
 import { log } from '../console'
 import { GameUi } from './gameUi'
 import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
-import { type Behavior, type Handle, type HudApi, type PhysicsApi, resolveBehavior, type ScriptContext, type SpawnOptions } from '../scripting'
+import {
+  type AudioSourceApi,
+  type Behavior,
+  type Handle,
+  type HudApi,
+  type PhysicsApi,
+  resolveBehavior,
+  type ScriptContext,
+  type SoundApi,
+  type SpawnOptions,
+} from '../scripting'
+import type { AssetResolver } from './nodes'
 
 interface Instance {
   behavior: Behavior
@@ -32,11 +44,15 @@ export class PlaySession {
   private readonly children = new Map<Entity, Entity[]>()
   private readonly ui: GameUi
   private readonly hud: HudApi
+  private readonly sound: SoundApi
+  private readonly oneShots = new Set<Audio | PositionalAudio>()
 
   constructor(
     private readonly engine: Engine,
     private readonly doc: ProjectDoc,
     private readonly rapier: RapierPhysics,
+    private readonly listener: AudioListener,
+    private readonly assets: AssetResolver,
   ) {
     this.ui = new GameUi(engine.container, (fn) => {
       try {
@@ -45,6 +61,22 @@ export class PlaySession {
         log('error', 'UI callback threw:', describe(error))
       }
     })
+    this.sound = {
+      play: (name, options = {}) => this.playOneShot(name, options.volume ?? 1, options.at),
+      tone: (frequency, duration = 0.15, options = {}) => {
+        const context = this.listener.context
+        const start = context.currentTime + (options.delay ?? 0)
+        const osc = context.createOscillator()
+        const gain = context.createGain()
+        osc.type = options.type ?? 'sine'
+        osc.frequency.value = frequency
+        gain.gain.setValueAtTime(options.volume ?? 0.2, start)
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration)
+        osc.connect(gain).connect(this.listener.getInput())
+        osc.start(start)
+        osc.stop(start + duration + 0.02)
+      },
+    }
     this.hud = {
       set: (key, value) => this.ui.setStat(key, value),
       remove: (key) => this.ui.removeStat(key),
@@ -100,6 +132,8 @@ export class PlaySession {
             offEnter()
             offExit()
             this.ui.dispose()
+            for (const sound of this.oneShots) if (sound.isPlaying) sound.stop()
+            this.listener.removeFromParent()
           }
         },
       },
@@ -108,7 +142,11 @@ export class PlaySession {
       {
         name: 'ui.labels',
         phase: 'render',
-        run: (engine) => this.ui.update(engine.camera, (h) => engine.world.isAlive(h.entity)),
+        run: (engine) => {
+          // The listener rides on whichever camera is active (game or editor view).
+          if (this.listener.parent !== engine.camera) engine.camera.add(this.listener)
+          this.ui.update(engine.camera, (h) => engine.world.isAlive(h.entity))
+        },
       },
       {
         // Scene switches wait until the frame is done so no script runs against a torn-down world.
@@ -150,6 +188,8 @@ export class PlaySession {
       hud: this.hud,
       ui: this.ui.api,
       physics,
+      sound: this.sound,
+      audio: audioApi(handle.object.userData.audio as Audio | undefined),
       get sceneName() {
         return session.runtime.sceneName
       },
@@ -166,6 +206,32 @@ export class PlaySession {
       warn: (...args) => log('warn', prefix, ...args),
       error: (...args) => log('error', prefix, ...args),
     }
+  }
+
+  private playOneShot(name: string, volume: number, at?: { x: number; y: number; z: number }): void {
+    const id = this.assets.byName(name)
+    const url = id && this.assets.url(id)
+    if (!url) {
+      log('warn', `sound.play: no audio asset named "${name}"`)
+      return
+    }
+    const sound = at ? new PositionalAudio(this.listener) : new Audio(this.listener)
+    const holder = new Object3D()
+    if (at) holder.position.set(at.x, at.y, at.z)
+    holder.add(sound)
+    this.engine.scene.add(holder)
+    sound.setVolume(volume)
+    this.oneShots.add(sound)
+    void this.engine.assets.audio(url).then((buffer) => {
+      if (!holder.parent) return
+      sound.setBuffer(buffer)
+      sound.onEnded = () => {
+        ;(sound as { isPlaying: boolean }).isPlaying = false
+        this.oneShots.delete(sound)
+        holder.removeFromParent()
+      }
+      sound.play()
+    })
   }
 
   private runAll(phase: Lifecycle, dt: number): void {
@@ -240,4 +306,23 @@ function describe(error: unknown): string {
   // `new Function` adds two header lines and compileScript adds "use strict".
   const match = error.stack?.match(/<anonymous>:(\d+):(\d+)/)
   return match ? `${error.message} (line ${Number(match[1]) - 3})` : error.message
+}
+
+function audioApi(sound: Audio | undefined): AudioSourceApi | undefined {
+  if (!sound) return undefined
+  return {
+    play: () => {
+      if (sound.buffer) {
+        if (sound.isPlaying) sound.stop()
+        sound.play()
+      }
+    },
+    stop: () => {
+      if (sound.isPlaying) sound.stop()
+    },
+    setVolume: (volume) => sound.setVolume(volume),
+    get playing() {
+      return sound.isPlaying
+    },
+  }
 }

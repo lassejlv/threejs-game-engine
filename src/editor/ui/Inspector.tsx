@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useStore } from '../../react'
+import type { AssetKind } from '../assetLibrary'
 import {
   COMPONENT_LABELS,
   type ComponentKey,
@@ -12,6 +14,7 @@ import {
   type SceneSettings,
 } from '../document'
 import {
+  assetLibrary,
   type CommitOptions,
   currentScene,
   editorStore,
@@ -307,6 +310,22 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
         </Section>
       )}
 
+      {entity.audio && (
+        <Section title={COMPONENT_LABELS.audio} icon={<Icon name="audio" className="icon-audio" />} onRemove={() => removeComponent('audio')}>
+          <AssetSelect kind="audio" label="Clip" value={entity.audio.asset} onChange={(asset) => setComponent('audio', { asset }, 'asset')} />
+          <NumberField label="Volume" value={entity.audio.volume} step={0.05} min={0} max={4} onChange={(volume) => setComponent('audio', { volume }, 'vol')} />
+          <CheckField label="Loop" value={entity.audio.loop} onChange={(loop) => setComponent('audio', { loop }, 'loop')} />
+          <CheckField label="Play on start" value={entity.audio.playOnStart} onChange={(playOnStart) => setComponent('audio', { playOnStart }, 'pos')} />
+          <CheckField label="3D (spatial)" value={entity.audio.spatial} onChange={(spatial) => setComponent('audio', { spatial }, 'spatial')} />
+          {entity.audio.spatial && (
+            <NumberField label="Ref distance" value={entity.audio.refDistance} step={0.5} min={0.1} onChange={(refDistance) => setComponent('audio', { refDistance }, 'ref')} />
+          )}
+          <Row label="">
+            <PreviewButton asset={entity.audio.asset} volume={entity.audio.volume} />
+          </Row>
+        </Section>
+      )}
+
       {entity.rigidBody && (
         <Section title={COMPONENT_LABELS.rigidBody} icon={<Icon name="body" />} onRemove={() => removeComponent('rigidBody')}>
           <SelectField
@@ -447,13 +466,40 @@ function ScriptSection({
   )
 }
 
+/** Plays an audio asset in the editor (outside the game's audio graph). */
+function PreviewButton({ asset, volume }: { asset: string | null; volume: number }) {
+  const [audio, setAudio] = useState<HTMLAudioElement | null>(null)
+  useEffect(() => () => audio?.pause(), [audio])
+  const url = asset ? assetLibrary.url(asset) : null
+  return (
+    <button
+      type="button"
+      disabled={!url}
+      onClick={() => {
+        if (audio) {
+          audio.pause()
+          setAudio(null)
+          return
+        }
+        const el = new Audio(url!)
+        el.volume = Math.min(1, volume)
+        el.onended = () => setAudio(null)
+        void el.play()
+        setAudio(el)
+      }}
+    >
+      {audio ? 'Stop preview' : 'Preview'}
+    </button>
+  )
+}
+
 function AssetSelect({
   kind,
   label,
   value,
   onChange,
 }: {
-  kind: 'model' | 'texture'
+  kind: AssetKind
   label: string
   value: string | null
   onChange: (value: string | null) => void

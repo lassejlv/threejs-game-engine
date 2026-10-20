@@ -59,6 +59,18 @@ export interface CameraDoc {
 
 export type BodyType = 'dynamic' | 'kinematic' | 'character'
 
+export interface AudioSourceDoc {
+  /** Audio asset id. */
+  asset: string | null
+  volume: number
+  loop: boolean
+  playOnStart: boolean
+  /** 3D: volume falls off with distance from the listener (the active camera). */
+  spatial: boolean
+  /** Distance at which a spatial source starts to get quieter. */
+  refDistance: number
+}
+
 export interface RigidBodyDoc {
   /** dynamic: simulated. kinematic: moved by scripts. character: walks with slopes/steps (for players, NPCs). */
   type: BodyType
@@ -101,6 +113,7 @@ export interface EntityDoc {
   model?: ModelDoc
   light?: LightDoc
   camera?: CameraDoc
+  audio?: AudioSourceDoc
   rigidBody?: RigidBodyDoc
   collider?: ColliderDoc
   /**
@@ -154,13 +167,14 @@ export interface ProjectDoc {
   scripts: ScriptDoc[]
 }
 
-export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'rigidBody' | 'collider'
+export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'audio' | 'rigidBody' | 'collider'
 
 export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   mesh: 'Mesh Renderer',
   model: 'Model',
   light: 'Light',
   camera: 'Camera',
+  audio: 'Audio Source',
   rigidBody: 'Rigid Body',
   collider: 'Collider',
 }
@@ -199,6 +213,7 @@ export const componentDefaults = {
     shadowArea: 40,
   }),
   camera: (): CameraDoc => ({ fov: 60, near: 0.1, far: 1000, main: true }),
+  audio: (): AudioSourceDoc => ({ asset: null, volume: 1, loop: false, playOnStart: true, spatial: true, refDistance: 5 }),
   rigidBody: (): RigidBodyDoc => ({
     type: 'dynamic',
     mass: 0,
@@ -428,5 +443,6 @@ function migrateEntity(raw: EntityDoc): EntityDoc {
     e.rigidBody = { ...componentDefaults.rigidBody(), type: kinematic ? 'kinematic' : 'dynamic', ...rest }
   }
   if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
+  if (e.audio) e.audio = { ...componentDefaults.audio(), ...e.audio }
   return e
 }

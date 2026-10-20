@@ -1,6 +1,6 @@
 import { newId } from './document'
 
-export type AssetKind = 'model' | 'texture'
+export type AssetKind = 'model' | 'texture' | 'audio'
 
 export interface AssetMeta {
   id: string
@@ -16,12 +16,13 @@ interface StoredAsset extends AssetMeta {
 const DB_NAME = 'ge-assets'
 const STORE = 'assets'
 
-export const ACCEPTED_ASSETS = '.glb,.gltf,.png,.jpg,.jpeg,.webp'
+export const ACCEPTED_ASSETS = '.glb,.gltf,.png,.jpg,.jpeg,.webp,.mp3,.ogg,.wav,.m4a'
 
 function kindOf(name: string): AssetKind | null {
   const ext = name.split('.').pop()?.toLowerCase()
   if (ext === 'glb' || ext === 'gltf') return 'model'
   if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') return 'texture'
+  if (ext === 'mp3' || ext === 'ogg' || ext === 'wav' || ext === 'm4a') return 'audio'
   return null
 }
 
@@ -39,12 +40,16 @@ function request<T>(req: IDBRequest<T>): Promise<T> {
 export class AssetLibrary {
   private db: Promise<IDBDatabase> | null = null
   private readonly blobs = new Map<string, Blob>()
+  private readonly names = new Map<string, string>()
   private readonly urls = new Map<string, string>()
 
   async list(): Promise<AssetMeta[]> {
     const db = await this.open()
     const all = await request<StoredAsset[]>(db.transaction(STORE).objectStore(STORE).getAll())
-    for (const a of all) this.blobs.set(a.id, a.blob)
+    for (const a of all) {
+      this.blobs.set(a.id, a.blob)
+      this.names.set(a.name, a.id)
+    }
     return all.map(({ blob: _blob, ...meta }) => meta)
   }
 
@@ -55,6 +60,7 @@ export class AssetLibrary {
     const db = await this.open()
     await request(db.transaction(STORE, 'readwrite').objectStore(STORE).put({ ...meta, blob: file }))
     this.blobs.set(meta.id, file)
+    this.names.set(meta.name, meta.id)
     return meta
   }
 
@@ -62,9 +68,17 @@ export class AssetLibrary {
     const db = await this.open()
     await request(db.transaction(STORE, 'readwrite').objectStore(STORE).delete(id))
     this.blobs.delete(id)
+    for (const [name, existing] of this.names) if (existing === id) this.names.delete(name)
     const url = this.urls.get(id)
     if (url) URL.revokeObjectURL(url)
     this.urls.delete(id)
+  }
+
+  /** Asset id for a file name (with or without extension), for scripts that refer to assets by name. */
+  byName(name: string): string | null {
+    if (this.names.has(name)) return this.names.get(name)!
+    for (const [file, id] of this.names) if (file.replace(/\.\w+$/, '') === name) return id
+    return null
   }
 
   /** Object URL for an asset, or null if it no longer exists. */

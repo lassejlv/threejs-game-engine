@@ -1,4 +1,6 @@
 import {
+  Audio,
+  type AudioListener,
   BoxGeometry,
   BufferGeometry,
   CapsuleGeometry,
@@ -21,6 +23,7 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   PointLight,
+  PositionalAudio,
   SphereGeometry,
   SpotLight,
   TorusGeometry,
@@ -34,6 +37,8 @@ import type { EntityDoc, Primitive } from '../document'
 /** Anything that can turn an asset id into a loadable URL (the editor's IndexedDB library, or an exported game's bundle). */
 export interface AssetResolver {
   url(id: string): string | null
+  /** Asset id for a file name, with or without extension. */
+  byName(name: string): string | null
 }
 
 /** Shared unit-sized geometries (never disposed per entity). */
@@ -57,7 +62,7 @@ function primitive(shape: Primitive): BufferGeometry {
 
 const proxyGeometry = new OctahedronGeometry(0.25)
 const arrowGeometry = new BufferGeometry().setAttribute('position', new Float32BufferAttribute([0, 0, 0, 0, 0, -1.5], 3))
-const proxyColors = { light: 0xffd25a, camera: 0x7fd1ff, empty: 0xb0b8c8 }
+const proxyColors = { light: 0xffd25a, camera: 0x7fd1ff, audio: 0xff8fb4, empty: 0xb0b8c8 }
 
 export function isShared(geometry: BufferGeometry): boolean {
   return geometry === proxyGeometry || geometry === arrowGeometry || [...primitives.values()].includes(geometry)
@@ -73,6 +78,8 @@ export class NodeFactory {
     private readonly engine: Engine,
     private readonly library: AssetResolver,
     private readonly editorMode: boolean,
+    /** Play mode only: audio sources are created against this listener. */
+    private readonly listener?: AudioListener,
   ) {}
 
   createNode(entity: EntityDoc): Group {
@@ -169,6 +176,8 @@ export class NodeFactory {
       }
     }
 
+    if (entity.audio?.asset && this.listener) this.createAudio(node, visual, entity)
+
     if (entity.camera && !this.editorMode) {
       const camera = new PerspectiveCamera(entity.camera.fov, 1, entity.camera.near, entity.camera.far)
       node.userData.camera = camera
@@ -181,7 +190,7 @@ export class NodeFactory {
   /** Small pickable gizmos for things that are otherwise invisible. */
   private addProxy(visual: Group, entity: EntityDoc): void {
     if (entity.mesh || entity.model) return
-    const kind = entity.light ? 'light' : entity.camera ? 'camera' : 'empty'
+    const kind = entity.light ? 'light' : entity.camera ? 'camera' : entity.audio ? 'audio' : 'empty'
     const material = new MeshBasicMaterial({ color: proxyColors[kind], wireframe: true, fog: false })
     const proxy = new Mesh(proxyGeometry, material)
     proxy.userData.editorOnly = true
@@ -200,6 +209,31 @@ export class NodeFactory {
       frustum.userData.editorOnly = true
       visual.add(frustum)
     }
+  }
+
+  /** Audio source on `node.userData.audio`; starts once its buffer has loaded if `playOnStart`. */
+  private createAudio(node: Group, visual: Group, entity: EntityDoc): void {
+    const a = entity.audio!
+    const url = this.library.url(a.asset!)
+    if (!url) {
+      log('warn', `${entity.name}: audio asset is missing`)
+      return
+    }
+    const listener = this.listener!
+    const sound = a.spatial ? new PositionalAudio(listener) : new Audio(listener)
+    if (sound instanceof PositionalAudio) sound.setRefDistance(a.refDistance)
+    sound.setVolume(a.volume)
+    sound.setLoop(a.loop)
+    visual.add(sound)
+    node.userData.audio = sound
+    void this.engine.assets
+      .audio(url)
+      .then((buffer) => {
+        if (!visual.parent) return
+        sound.setBuffer(buffer)
+        if (a.playOnStart) sound.play()
+      })
+      .catch((error: unknown) => log('error', `${entity.name}: failed to load audio`, error))
   }
 
   private loadModel(visual: Group, entity: EntityDoc): void {
@@ -241,5 +275,6 @@ export function disposeVisual(visual: Object3D): void {
     if (Array.isArray(material)) for (const m of material) m.dispose()
     else material?.dispose()
     if ('isLight' in o && 'dispose' in o) (o as unknown as { dispose(): void }).dispose()
+    if (o instanceof Audio && o.isPlaying) o.stop()
   })
 }
