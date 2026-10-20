@@ -172,6 +172,14 @@ declare module 'engine' {
     readonly particles: Particles | undefined
     /** Pathfinding over the scene's static colliders. */
     readonly nav: Nav
+    /** Background music that keeps playing (or cross-fades) across scenes. */
+    readonly music: {
+      play(asset: string, options?: { fade?: number; volume?: number; loop?: boolean }): void
+      stop(fade?: number): void
+      readonly current: string | null
+    }
+    /** Volume groups (0..1), remembered for the player: ctx.volume.set('music', 0.5). */
+    readonly volume: { set(group: 'master' | 'music' | 'sfx', value: number): void; get(group: 'master' | 'music' | 'sfx'): number }
     readonly sceneName: string
     readonly engine: any
     find(name: string): Handle | undefined

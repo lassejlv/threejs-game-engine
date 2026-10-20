@@ -17,7 +17,7 @@ import {
   undo,
   updateProject,
 } from '../editor'
-import { downloadGame, runGameInTab } from '../exportGame'
+import { downloadGame, downloadWebApp, runGameInTab } from '../exportGame'
 import { PRESETS } from '../presets'
 import { sceneView } from '../runtime/editScene'
 import { TextInput } from './fields'
@@ -143,6 +143,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
           items={[
             { label: 'Run in new tab', onSelect: () => void runGameInTab() },
             { label: 'Download game (.html)', onSelect: () => void downloadGame() },
+            { label: 'Download installable web app (.zip)', onSelect: () => void downloadWebApp() },
           ]}
         />
         <span className="fps">{fps} fps</span>

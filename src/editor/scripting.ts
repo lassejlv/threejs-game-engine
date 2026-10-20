@@ -3,6 +3,7 @@ import type { Engine, Entity, Input, RigidBodyData, Time } from '../engine'
 import { damp, dampAngle, moveTowards, teleport } from '../engine'
 import type { ParamValue, ProjectDoc } from './document'
 import type { AnimationApi } from './runtime/animator'
+import type { MusicApi, VolumeApi } from './runtime/audioMixer'
 import type { NavApi } from './runtime/navigation'
 import type { ParticlesApi } from './runtime/particles'
 import type { TimerHandle, TweenOptions } from './runtime/timers'
@@ -105,6 +106,10 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly particles: ParticlesApi | undefined
   /** Pathfinding over the scene's static geometry. */
   readonly nav: NavApi
+  /** Background music that carries across scenes. */
+  readonly music: MusicApi
+  /** Master, music and sound-effect volume (0..1), remembered for the player. */
+  readonly volume: VolumeApi
   /** Name of the running scene. */
   readonly sceneName: string
   find(name: string): Handle | undefined

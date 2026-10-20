@@ -45,9 +45,10 @@ export class Assets {
   /** Loads a glTF/GLB. Clone `gltf.scene` (SkeletonUtils.clone for skinned meshes) to place it more than once. */
   gltf(url: string): Promise<GLTF> {
     return this.load(`gltf:${url}`, async () => {
-      this.gltfLoader ??= import('three/addons/loaders/GLTFLoader.js').then(
-        ({ GLTFLoader }) => new GLTFLoader(this.manager),
-      )
+      this.gltfLoader ??= Promise.all([
+        import('three/addons/loaders/GLTFLoader.js'),
+        import('three/addons/libs/meshopt_decoder.module.js'),
+      ]).then(([{ GLTFLoader }, { MeshoptDecoder }]) => new GLTFLoader(this.manager).setMeshoptDecoder(MeshoptDecoder))
       return (await this.gltfLoader).loadAsync(url)
     })
   }

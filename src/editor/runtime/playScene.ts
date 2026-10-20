@@ -45,10 +45,13 @@ import {
   type ProjectDoc,
   type ProjectSettings,
 } from '../document'
+import { AudioMixer } from './audioMixer'
+import { assetsIdle, Fader } from './fader'
 import { MeshBatcher } from './batcher'
 import { type AssetResolver, NodeFactory } from './nodes'
 import type { ParticleEmitter } from './particles'
 import { PlaySession } from './playSession'
+import { TouchControls, wantsTouchControls } from './touchControls'
 import { visualGeometry } from './visualGeometry'
 import { SceneEnvironment } from './environment'
 
@@ -224,11 +227,14 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
     name: scene.name,
     physics: false, // Rapier replaces the built-in physics
     async setup({ engine, signal }) {
+      const fader = Fader.for(engine.container)
+      fader.showLoading(engine.assets.progress)
       const R = await loadRapier()
       if (signal.aborted) return
       engine.physics.gravity.set(0, -scene.settings.gravity, 0)
       // Built-in names first, so the built-in scripts work even if a project removed them; project bindings win.
-      for (const a of [...defaultInputActions(), ...doc.settings.inputActions]) engine.input.bind(a.name, a.keys)
+      // Every action also answers to its on-screen touch button.
+      for (const a of [...defaultInputActions(), ...doc.settings.inputActions]) engine.input.bind(a.name, [...a.keys, `Touch:${a.name}`])
       for (const a of [...defaultInputAxes(), ...doc.settings.inputAxes]) {
         engine.input.bindAxis(a.name, a.negative, a.positive, a.gamepadAxis, a.invert)
       }
@@ -238,6 +244,16 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
 
       const physics = new RapierPhysics(engine, R)
       const listener = new AudioListener()
+      // Music and volume groups outlive the scene, so tracks continue or cross-fade across scene loads.
+      const mixer = AudioMixer.for(engine)
+      mixer.useProject(doc.name)
+      mixer.attachListener(listener)
+      if (scene.settings.music === 'stop') mixer.stopMusic(1)
+      else if (scene.settings.music) {
+        const url = options.assets.url(scene.settings.music)
+        if (url) mixer.playMusic(scene.settings.music, scene.settings.music, url, { volume: scene.settings.musicVolume })
+        else log('warn', `"${scene.name}": its music asset is missing`)
+      }
       const session = new PlaySession(engine, doc, physics, listener, options.assets, scene.settings.navigation)
       const factory = new NodeFactory(engine, options.assets, false, listener)
       const batcher = new MeshBatcher(engine.scene)
@@ -261,8 +277,12 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
         loadScene: (name) => {
           const target = doc.scenes.find((s) => s.name === name || s.id === name)
           if (target) options.loadScene(target.id)
-          else log('warn', `loadScene: no scene named "${name}"`)
+          else {
+            log('warn', `loadScene: no scene named "${name}"`)
+            void fader.fadeTo(0, 0.2)
+          }
         },
+        beforeSceneSwitch: () => fader.fadeTo(1, 0.3),
       })
       const { mainCamera } = builder.instantiate(depthFirst(expandEntities(scene.entities, doc.prefabs)))
       session.showSceneUi(scene.ui)
@@ -316,7 +336,17 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
           },
         })
       }
+      if (wantsTouchControls(doc.settings.touchControls)) {
+        const touch = new TouchControls(engine.container, engine.input, doc.settings.touchButtons)
+        engine.addSystem({ name: 'touch', phase: 'render', run: () => {}, init: () => () => touch.dispose() })
+      }
       options.onStart?.(engine)
+      // Fade in once models and textures have loaded (or after a few seconds).
+      void assetsIdle(engine.assets.progress).then(() => {
+        if (signal.aborted) return
+        fader.hideLoading()
+        void fader.fadeTo(0, 0.4)
+      })
     },
   })
 }

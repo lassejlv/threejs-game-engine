@@ -3,6 +3,7 @@ import { defaultNavSettings, defineComponent, type Engine, type Entity, type Nav
 import { log } from '../console'
 import type { Animator } from './animator'
 import type { ParticleEmitter } from './particles'
+import { AudioMixer } from './audioMixer'
 import { Navigation } from './navigation'
 import { drawUiElement, isLive } from './sceneUi'
 import { Timers } from './timers'
@@ -45,6 +46,8 @@ export interface SessionRuntime {
   sceneName: string
   spawn(prefab: string, options: SpawnOptions): Handle | undefined
   loadScene(name: string): void
+  /** Runs before a scene switch (e.g. a fade to black); the switch waits for it. */
+  beforeSceneSwitch?(): Promise<void>
 }
 
 /** Runs entity scripts for one play session. */
@@ -52,6 +55,7 @@ export class PlaySession {
   readonly globals: Record<string, unknown> = {}
   private runtime: SessionRuntime = { sceneName: '', spawn: () => undefined, loadScene: () => {} }
   private pendingScene: string | null = null
+  private switching = false
   private readonly handles = new Map<Entity, Handle>()
   private readonly byName = new Map<string, Entity[]>()
   private readonly children = new Map<Entity, Entity[]>()
@@ -236,7 +240,12 @@ export class PlaySession {
         run: () => {
           const next = this.pendingScene
           this.pendingScene = null
-          if (next !== null) this.runtime.loadScene(next)
+          if (next === null || this.switching) return
+          const before = this.runtime.beforeSceneSwitch
+          if (!before) return this.runtime.loadScene(next)
+          // The game keeps running while it fades out, but only one switch happens.
+          this.switching = true
+          void before().then(() => this.runtime.loadScene(next))
         },
       },
     ]
@@ -314,6 +323,21 @@ export class PlaySession {
       animation: handle.object.userData.animator as Animator | undefined,
       particles: handle.object.userData.particles as ParticleEmitter | undefined,
       nav: this.navigation.api(handle),
+      music: {
+        play: (asset, options) => {
+          const id = this.assets.byName(asset)
+          const url = id && this.assets.url(id)
+          if (url) AudioMixer.for(this.engine).playMusic(id, asset, url, options)
+          else log('warn', `music.play: no audio asset named "${asset}"`)
+        },
+        stop: (fade) => AudioMixer.for(this.engine).stopMusic(fade),
+        get current() {
+          return AudioMixer.for(session.engine).currentMusic
+        },
+      },
+      get volume() {
+        return AudioMixer.for(session.engine).volume
+      },
       get sceneName() {
         return session.runtime.sceneName
       },

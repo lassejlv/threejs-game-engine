@@ -320,6 +320,9 @@ export interface SceneSettings {
   contrast: number
   /** Pathfinding grid for ctx.nav, baked from static colliders when a script first needs it. */
   navigation: NavSettings
+  /** Music when the scene starts: an audio asset id, '' to keep whatever is playing, or 'stop'. */
+  music: string
+  musicVolume: number
 }
 
 export type ShadowQuality = 'off' | 'low' | 'medium' | 'high'
@@ -403,6 +406,14 @@ export interface ProjectSettings {
   inputActions: InputActionDoc[]
   /** Named -1..1 axes scripts read with `ctx.input.getAxis('MoveX')`. */
   inputAxes: InputAxisDoc[]
+  /** On-screen joystick and buttons: on touch screens only (auto), always, or never. */
+  touchControls: 'auto' | 'always' | 'off'
+  /** Actions that get an on-screen button. */
+  touchButtons: string[]
+  /** Exports leave out assets nothing references unless this is on. */
+  exportIncludeUnused: boolean
+  /** Exports compress models (meshopt) and re-encode textures (WebP). */
+  exportCompress: boolean
 }
 
 export interface InputActionDoc {
@@ -447,6 +458,10 @@ export function defaultProjectSettings(): ProjectSettings {
     layerCollisions: Array.from({ length: LAYER_COUNT }, () => 0xffff),
     inputActions: defaultInputActions(),
     inputAxes: defaultInputAxes(),
+    touchControls: 'auto',
+    touchButtons: ['Jump', 'Fire', 'Sprint'],
+    exportIncludeUnused: false,
+    exportCompress: true,
   }
 }
 
@@ -644,6 +659,8 @@ export function defaultSettings(): SceneSettings {
     saturation: 1,
     contrast: 1,
     navigation: defaultNavSettings(),
+    music: '',
+    musicVolume: 0.8,
   }
 }
 
@@ -890,6 +907,8 @@ export function assetReferences(doc: ProjectDoc, id: string, fileName: string): 
   }
   for (const scene of doc.scenes) {
     if (scene.settings.skyTexture === id) out.push(`${scene.name}: sky`)
+    if (scene.settings.music === id) out.push(`${scene.name}: music`)
+    for (const el of scene.ui) if (el.image === id) out.push(`${scene.name} › UI ${el.name}: image`)
     for (const e of scene.entities) check(scene.name, e)
   }
   for (const prefab of doc.prefabs) for (const e of prefab.entities) check(`Prefab ${prefab.name}`, e)

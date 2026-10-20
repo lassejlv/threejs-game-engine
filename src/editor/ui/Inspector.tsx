@@ -169,6 +169,30 @@ function UiElementInspector({ element: el, doc }: { element: UiElementDoc; doc: 
   )
 }
 
+function SceneMusic({ settings, set }: { settings: SceneSettings; set: (patch: Partial<SceneSettings>, key: string) => void }) {
+  const assets = useStore(editorStore, (s) => s.assets)
+  const audio = assets.filter((a) => a.kind === 'audio')
+  return (
+    <Section title="Music" icon={<Icon name="audio" className="icon-audio" />}>
+      <SelectField
+        label="When the scene starts"
+        value={settings.music}
+        options={[
+          ['', 'Keep current music'],
+          ['stop', 'Stop music'],
+          ...audio.map((a) => [a.id, `Play ${a.name}`] as const),
+          ...(settings.music && settings.music !== 'stop' && !audio.some((a) => a.id === settings.music) ? [[settings.music, 'Missing asset'] as const] : []),
+        ]}
+        onChange={(music) => set({ music }, 'music')}
+      />
+      {settings.music !== '' && settings.music !== 'stop' && (
+        <NumberField label="Music volume" value={settings.musicVolume} step={0.05} min={0} max={1} onChange={(musicVolume) => set({ musicVolume }, 'mv')} />
+      )}
+      <p className="hint">Music cross-fades between scenes and keeps playing when the next scene uses the same track. Scripts: ctx.music, ctx.volume.</p>
+    </Section>
+  )
+}
+
 function SceneInspector({ sceneId, settings }: { sceneId: string; settings: SceneSettings }) {
   const set = (patch: Partial<SceneSettings>, key: string) =>
     updateScene(sceneId, { settings: { ...settings, ...patch } }, { merge: `settings.${sceneId}.${key}` })
@@ -231,6 +255,7 @@ function SceneInspector({ sceneId, settings }: { sceneId: string; settings: Scen
         <NumberField label="Contrast" value={settings.contrast} step={0.05} min={0} onChange={(v) => set({ contrast: v }, 'con')} />
         <p className="hint">Bloom makes bright and emissive surfaces glow. Lower the threshold for more glow.</p>
       </Section>
+      <SceneMusic settings={settings} set={set} />
       <Section title="Physics" icon={<Icon name="body" />}>
         <NumberField label="Gravity" value={settings.gravity} step={0.5} onChange={(v) => set({ gravity: v }, 'g')} />
       </Section>

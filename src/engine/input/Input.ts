@@ -154,6 +154,12 @@ export class Input {
     else this.virtualAxes.set(name, value)
   }
 
+  /** On-screen buttons press and release a code (e.g. 'Touch:Jump') like a key. */
+  setVirtualButton(code: string, down: boolean): void {
+    if (down && !this.down.has(code)) this.press(code)
+    else if (!down && this.down.has(code)) this.release(code)
+  }
+
   /** Whether an action name has bindings. */
   hasAction(name: string): boolean {
     return this.actions.has(name)

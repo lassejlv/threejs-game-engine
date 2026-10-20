@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assetReferences,
   componentDefaults as defaults,
+  createUiElement,
   createVariant,
   cloneSubtree,
   componentDefaults,
@@ -125,6 +126,9 @@ describe('compileScript', () => {
     expect(uses).toEqual([expect.stringContaining('Normal map'), 'Bonus Room: sky'])
     expect(assetReferences(doc, 'snd', 'jump.mp3')).toEqual([`Script ${doc.scripts[0].name}`])
     expect(assetReferences(doc, 'nothing', 'unused.glb')).toEqual([])
+    doc.scenes[0].settings.music = 'song'
+    doc.scenes[0].ui.push({ ...createUiElement('image', 'Logo'), image: 'song' })
+    expect(assetReferences(doc, 'song', 'song.mp3')).toEqual(['Coin Rush: music', 'Coin Rush › UI Logo: image'])
   })
 
   it('applies per-part overrides to prefab instances', () => {

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../../react'
 import { defaultInputActions, defaultInputAxes, type InputActionDoc, type InputAxisDoc, LAYER_COUNT, type ProjectSettings } from '../document'
 import { editorStore, setStartScene, updateProject } from '../editor'
-import { Row, SelectField, TextInput } from './fields'
+import { CheckField, Row, SelectField, TextInput } from './fields'
 
 type Tab = 'general' | 'input' | 'layers'
 
@@ -152,6 +152,20 @@ function InputSettings({ settings, set }: { settings: ProjectSettings; set: (pat
           Reset to defaults
         </button>
       </div>
+      <h3 className="dialog-subhead">Touch screens</h3>
+      <SelectField
+        label="On-screen controls"
+        value={settings.touchControls}
+        options={[['auto', 'On touch screens'], ['always', 'Always (also to test on desktop)'], ['off', 'Off']]}
+        onChange={(touchControls) => set({ touchControls }, 'touch')}
+      />
+      <Row label="Buttons for">
+        <TextInput
+          value={settings.touchButtons.join(', ')}
+          onChange={(text) => set({ touchButtons: text.split(',').map((t) => t.trim()).filter(Boolean) }, 'touchButtons')}
+        />
+      </Row>
+      <p className="hint">A joystick drives MoveX/MoveY; each listed action gets a round button. Dragging on the game still looks around.</p>
       <h3 className="dialog-subhead">Axes</h3>
       <table className="binding-table">
         <thead>
@@ -269,6 +283,20 @@ function GeneralSettings() {
       <p className="hint">
         Exported games begin in the start scene (Play in the editor runs the scene you have open). The name is the exported game's
         title, and saves made with ctx.save are kept per project name.
+      </p>
+      <CheckField
+        label="Compress exports"
+        value={doc.settings.exportCompress}
+        onChange={(exportCompress) => updateProject({ settings: { ...doc.settings, exportCompress } }, { label: 'Export compression' })}
+      />
+      <CheckField
+        label="Include unused assets"
+        value={doc.settings.exportIncludeUnused}
+        onChange={(exportIncludeUnused) => updateProject({ settings: { ...doc.settings, exportIncludeUnused } }, { label: 'Export unused assets' })}
+      />
+      <p className="hint">
+        Compression shrinks models (meshopt) and re-encodes textures as WebP when that makes them smaller. Exports leave out assets nothing
+        references; turn on "Include unused" if a script builds asset names at runtime.
       </p>
       <p className="hint">
         {doc.scenes.length} scene{doc.scenes.length === 1 ? '' : 's'}, {entityCount} entities, {doc.prefabs.length} prefabs, {doc.scripts.length}{' '}
