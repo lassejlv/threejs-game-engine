@@ -14,6 +14,7 @@ import {
   type ProjectDoc,
   type ScriptRefDoc,
   type SceneSettings,
+  type Vec3,
 } from '../document'
 import {
   assetLibrary,
@@ -24,6 +25,7 @@ import {
   primarySelection,
   targetEntities,
   unpackPrefab,
+  updateEntities,
   updateEntity,
   updateScene,
 } from '../editor'
@@ -43,6 +45,7 @@ import { sceneView } from '../runtime/editScene'
 import type { AnimStateDef, AnimTransitionDef } from '../runtime/animator'
 import { modelClips } from '../runtime/nodes'
 import { Icon } from './icons'
+import { LiveInspector } from './LiveInspector'
 
 type Patch<K extends keyof EntityDoc> = Partial<NonNullable<EntityDoc[K]>>
 
@@ -61,10 +64,16 @@ export function Inspector() {
         <span>Inspector</span>
         {playing && <span className="badge">Read-only while playing</span>}
       </header>
+      {playing && primary && (
+        <div className="panel-body live-panel">
+          <LiveInspector key={primary} docId={primary} />
+        </div>
+      )}
       <fieldset className="panel-body" disabled={playing}>
         {selection.length > 1 && (
           <p className="hint multi">
-            {selection.length} objects selected. Gizmo edits apply to all; the fields below edit the last one.
+            {selection.length} objects selected. Edits apply to every selected object that has the field; the values shown are the last
+            one's.
           </p>
         )}
         {entity?.prefab ? (
@@ -270,10 +279,22 @@ function ParamFields({
 
 function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }) {
   const id = entity.id
+  // Multi-edit: every selected plain entity (prefab instances have their own inspector).
+  const selection = useStore(editorStore, (s) => s.selection)
+  const ids = selection.includes(id) ? selection : [id]
   const merge = (key: string): CommitOptions => ({ merge: `${id}.${key}` })
   const setComponent = <K extends ComponentKey>(key: K, patch: Patch<K>, field: string) =>
-    updateEntity(id, (e) => ({ [key]: { ...e[key], ...patch } }) as Partial<EntityDoc>, merge(`${key}.${field}`))
-  const removeComponent = (key: ComponentKey) => updateEntity(id, { [key]: undefined })
+    updateEntities(ids, (e) => (e[key] && !e.prefab ? ({ [key]: { ...e[key], ...patch } } as Partial<EntityDoc>) : {}), merge(`${key}.${field}`))
+  const removeComponent = (key: ComponentKey) => updateEntities(ids, (e) => (e.prefab ? {} : { [key]: undefined }))
+  /** Sets only the axes that changed, so editing X on several objects keeps each one's Y and Z. */
+  const setVec = (field: 'position' | 'rotation' | 'scale', next: Vec3, key: string) => {
+    const changed = [0, 1, 2].filter((i) => next[i] !== entity.transform[field][i])
+    updateEntities(
+      ids,
+      (e) => ({ transform: { ...e.transform, [field]: e.transform[field].map((v, i) => (changed.includes(i) ? next[i] : v)) as Vec3 } }),
+      merge(key),
+    )
+  }
   const t = entity.transform
 
   const addable = (Object.keys(COMPONENT_LABELS) as ComponentKey[]).filter((k) => !entity[k])
@@ -288,7 +309,10 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
         <input
           type="checkbox"
           checked={entity.active}
-          onChange={(e) => updateEntity(id, { active: e.target.checked })}
+          onChange={(e) => {
+            const active = e.target.checked
+            updateEntities(ids, () => ({ active }))
+          }}
           title="Active"
           aria-label="Active"
         />
@@ -296,9 +320,9 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
       </div>
 
       <Section title="Transform" icon={<Icon name="move" />}>
-        <Vec3Field label="Position" value={t.position} onChange={(position) => updateEntity(id, { transform: { ...t, position } }, merge('pos'))} />
-        <Vec3Field label="Rotation" value={t.rotation} step={1} onChange={(rotation) => updateEntity(id, { transform: { ...t, rotation } }, merge('rot'))} />
-        <Vec3Field label="Scale" value={t.scale} step={0.05} onChange={(scale) => updateEntity(id, { transform: { ...t, scale } }, merge('scale'))} />
+        <Vec3Field label="Position" value={t.position} onChange={(position) => setVec('position', position, 'pos')} />
+        <Vec3Field label="Rotation" value={t.rotation} step={1} onChange={(rotation) => setVec('rotation', rotation, 'rot')} />
+        <Vec3Field label="Scale" value={t.scale} step={0.05} onChange={(scale) => setVec('scale', scale, 'scale')} />
       </Section>
 
       {entity.mesh && (
@@ -513,6 +537,7 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
           <Vec3Field label="Center" value={entity.collider.center} step={0.05} onChange={(center) => setComponent('collider', { center }, 'center')} />
           <NumberField label="Friction" value={entity.collider.friction} step={0.05} min={0} onChange={(friction) => setComponent('collider', { friction }, 'fric')} />
           <CheckField label="Is trigger" value={entity.collider.trigger} onChange={(trigger) => setComponent('collider', { trigger }, 'trig')} />
+          {entity.collider.shape !== 'mesh' && entity.collider.shape !== 'convex' && <ColliderHandlesToggle />}
           <p className="hint">Sizes are multiplied by the transform scale.</p>
         </Section>
       )}
@@ -532,10 +557,10 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
             const value = e.target.value
             if (!value) return
             if (value.startsWith('script:')) {
-              updateEntity(id, (en) => ({ scripts: [...en.scripts, { script: value.slice(7), params: {} }] }))
+              updateEntities(ids, (en) => (en.prefab ? {} : { scripts: [...en.scripts, { script: value.slice(7), params: {} }] }))
             } else {
               const key = value as ComponentKey
-              updateEntity(id, (en) => ({ [key]: key === 'collider' ? defaultCollider(en) : componentDefaults[key]() }))
+              updateEntities(ids, (en) => (en[key] || en.prefab ? {} : { [key]: key === 'collider' ? defaultCollider(en) : componentDefaults[key]() }))
             }
           }}
           aria-label="Add component"
@@ -630,6 +655,11 @@ function JointSection({
       </p>
     </Section>
   )
+}
+
+function ColliderHandlesToggle() {
+  const on = useStore(editorStore, (s) => s.colliderHandles)
+  return <CheckField label="Edit in Scene view" value={on} onChange={(colliderHandles) => editorStore.set({ colliderHandles })} />
 }
 
 /** States and transitions of a model's animation state machine. */

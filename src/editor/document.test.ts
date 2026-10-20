@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assetReferences,
   cloneSubtree,
   componentDefaults,
   createEntity,
@@ -110,5 +111,17 @@ describe('compileScript', () => {
 
   it('returns syntax errors instead of throwing', () => {
     expect(compileScript('Bad', 'export default { update( }')).toBeInstanceOf(Error)
+  })
+
+  it('finds every place an asset is used', () => {
+    const doc = sampleProject()
+    const crate = doc.scenes[0].entities.find((e) => e.mesh)!
+    crate.mesh = { ...crate.mesh!, normalMap: 'tex1' }
+    doc.scenes[1].settings.skyTexture = 'tex1'
+    doc.scripts[0].source += `\nctx.sound.play('jump')`
+    const uses = assetReferences(doc, 'tex1', 'bricks.png')
+    expect(uses).toEqual([expect.stringContaining('Normal map'), 'Bonus Room: sky'])
+    expect(assetReferences(doc, 'snd', 'jump.mp3')).toEqual([`Script ${doc.scripts[0].name}`])
+    expect(assetReferences(doc, 'nothing', 'unused.glb')).toEqual([])
   })
 })

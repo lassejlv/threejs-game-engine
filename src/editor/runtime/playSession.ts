@@ -54,6 +54,8 @@ export class PlaySession {
   private readonly handles = new Map<Entity, Handle>()
   private readonly byName = new Map<string, Entity[]>()
   private readonly children = new Map<Entity, Entity[]>()
+  /** Document entity id → running entity, for the live inspector. */
+  private readonly fromDoc = new Map<string, Entity>()
   private readonly ui: GameUi
   private readonly hud: HudApi
   private readonly sound: SoundApi
@@ -130,6 +132,28 @@ export class PlaySession {
       const list = this.children.get(parent) ?? []
       list.push(handle.entity)
       this.children.set(parent, list)
+    }
+  }
+
+  /** Records which running entity a document entity became (initial scene and spawns). */
+  mapDoc(docId: string, entity: Entity): void {
+    this.fromDoc.set(docId, entity)
+  }
+
+  /** Live view of a document entity while playing: its handle and script instances (null once destroyed). */
+  inspect(docId: string): { handle: Handle; scripts: { name: string; params: Record<string, ParamValue>; state: Record<string, unknown>; failed: boolean }[] } | null {
+    const entity = this.fromDoc.get(docId)
+    const handle = entity === undefined ? undefined : this.handles.get(entity)
+    if (!handle || !this.engine.world.isAlive(handle.entity)) return null
+    const instances = this.engine.world.tryGet(handle.entity, Scripts) ?? []
+    return {
+      handle,
+      scripts: instances.map((i) => ({
+        name: i.behavior.name,
+        params: i.ctx.params as Record<string, ParamValue>,
+        state: i.ctx.state,
+        failed: i.failed,
+      })),
     }
   }
 

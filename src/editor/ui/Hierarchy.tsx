@@ -36,7 +36,21 @@ export function Hierarchy() {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [renaming, setRenaming] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   const prefabMode = editing.kind === 'prefab'
+
+  // Search: matches plus their ancestors, so results keep their place in the tree.
+  const filter = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return null
+    const byId = new Map(entities.map((e) => [e.id, e]))
+    const matches = new Set(entities.filter((e) => matchesQuery(e, q)).map((e) => e.id))
+    const visible = new Set<string>()
+    for (const id of matches) {
+      for (let e = byId.get(id); e && !visible.has(e.id); e = e.parent ? byId.get(e.parent) : undefined) visible.add(e.id)
+    }
+    return { matches, visible }
+  }, [entities, query])
 
   const children = useMemo(() => {
     const map = new Map<string | null, EntityDoc[]>()
@@ -74,9 +88,9 @@ export function Hierarchy() {
     e.dataTransfer.types.includes(DRAG_TYPE) || e.dataTransfer.types.includes(PREFAB_DRAG_TYPE)
 
   const renderRows = (parent: string | null, depth: number): ReactNode =>
-    (children.get(parent) ?? []).map((entity) => {
+    (children.get(parent) ?? []).filter((entity) => !filter || filter.visible.has(entity.id)).map((entity) => {
       const kids = children.get(entity.id)
-      const open = !collapsed.has(entity.id)
+      const open = filter ? true : !collapsed.has(entity.id)
       const isSelected = selection.includes(entity.id)
       const prefabName = entity.prefab ? prefabNames.find((p) => p.id === entity.prefab)?.name : undefined
       return (
@@ -89,6 +103,7 @@ export function Hierarchy() {
               !entity.active && 'inactive',
               entity.prefab && 'is-prefab',
               dropTarget === entity.id && 'drop',
+              filter && !filter.matches.has(entity.id) && 'context',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -196,6 +211,16 @@ export function Hierarchy() {
           </button>
         </div>
       </header>
+      <div className="tree-search">
+        <input
+          type="search"
+          placeholder="Search (t:light, t:script…)"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
+          aria-label="Search hierarchy"
+        />
+      </div>
       <div
         className={`panel-body tree ${dropTarget === 'root' ? 'drop-root' : ''} ${prefabMode ? 'prefab-mode' : ''}`}
         role="tree"
@@ -209,8 +234,41 @@ export function Hierarchy() {
         onDrop={(e) => onDrop(e, null)}
         onClick={(e) => e.target === e.currentTarget && select(null)}
       >
-        {entities.length === 0 ? <p className="empty">Empty scene. Use + to add objects.</p> : renderRows(null, 0)}
+        {entities.length === 0 ? (
+          <p className="empty">Empty scene. Use + to add objects.</p>
+        ) : filter && filter.matches.size === 0 ? (
+          <p className="empty">Nothing matches "{query}".</p>
+        ) : (
+          renderRows(null, 0)
+        )}
       </div>
     </aside>
   )
+}
+
+const TYPE_FILTERS: Record<string, (e: EntityDoc) => boolean> = {
+  mesh: (e) => !!e.mesh,
+  model: (e) => !!e.model,
+  light: (e) => !!e.light,
+  camera: (e) => !!e.camera,
+  audio: (e) => !!e.audio,
+  particles: (e) => !!e.particles,
+  body: (e) => !!e.rigidBody,
+  rigidbody: (e) => !!e.rigidBody,
+  collider: (e) => !!e.collider,
+  joint: (e) => !!e.joint,
+  script: (e) => e.scripts.length > 0,
+  prefab: (e) => !!e.prefab,
+}
+
+/** Name substring, or `t:<component>` (mesh, light, collider, script, prefab...), or both: `t:light sun`. */
+function matchesQuery(e: EntityDoc, query: string): boolean {
+  let rest = query
+  const type = /(?:^|\s)t:(\w+)/.exec(query)
+  if (type) {
+    const test = TYPE_FILTERS[type[1]]
+    if (!test || !test(e)) return false
+    rest = query.replace(type[0], '').trim()
+  }
+  return !rest || e.name.toLowerCase().includes(rest)
 }

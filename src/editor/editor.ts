@@ -37,6 +37,8 @@ export interface EditorState {
   snap: boolean
   /** Draw collider outlines for every entity (the selection's are always drawn). */
   showColliders: boolean
+  /** Show drag handles on the selected collider in the Scene view. */
+  colliderHandles: boolean
   /** Scene view (free editor camera) or Game view (through the main camera). */
   view: 'scene' | 'game'
   mode: Mode
@@ -51,7 +53,11 @@ export interface EditorState {
   canRedo: boolean
   openScript: string | null
   assets: AssetMeta[]
-  bottomTab: 'project' | 'console'
+  bottomTab: 'project' | 'console' | 'history'
+  /** Labels of the undoable steps, oldest first. */
+  history: string[]
+  /** Labels of the redoable steps, next one first. */
+  redoHistory: string[]
 }
 
 const STORAGE_KEY = 'ge-project-v1'
@@ -78,6 +84,7 @@ export const editorStore = createStore<EditorState>({
   tool: 'translate',
   snap: false,
   showColliders: false,
+  colliderHandles: false,
   view: 'scene',
   mode: 'edit',
   paused: false,
@@ -89,6 +96,8 @@ export const editorStore = createStore<EditorState>({
   openScript: null,
   assets: [],
   bottomTab: 'project',
+  history: [],
+  redoHistory: [],
 })
 
 export const assetLibrary = new AssetLibrary()
@@ -173,8 +182,36 @@ export function openPrefab(id: string): void {
 // ---------------------------------------------------------------------------
 // History
 
-const past: ProjectDoc[] = []
-const future: ProjectDoc[] = []
+interface Step {
+  doc: ProjectDoc
+  label: string
+}
+
+const past: Step[] = []
+const future: Step[] = []
+
+function historyState(): Pick<EditorState, 'history' | 'redoHistory' | 'canUndo' | 'canRedo'> {
+  return {
+    history: past.map((s) => s.label),
+    redoHistory: [...future].reverse().map((s) => s.label),
+    canUndo: past.length > 0,
+    canRedo: future.length > 0,
+  }
+}
+
+/** A readable name for a change, from its merge key (`<entityId>.mesh.color`) when no label was given. */
+function describeChange(doc: ProjectDoc, merge: string | undefined): string {
+  if (!merge) return 'Edit'
+  const [head, ...rest] = merge.split('.')
+  const field = rest.join(' › ')
+  if (head === 'settings') return 'Scene settings'
+  if (head === 'project') return 'Project settings'
+  for (const list of [...doc.scenes.map((s) => s.entities), ...doc.prefabs.map((p) => p.entities)]) {
+    const entity = list.find((e) => e.id === head)
+    if (entity) return `${entity.name}: ${field.replace(/\d+$/, '') || 'edit'}`
+  }
+  return 'Edit'
+}
 let mergeKey: string | null = null
 let mergeTime = 0
 let transaction: { recorded: boolean } | null = null
@@ -197,10 +234,12 @@ export interface CommitOptions {
   merge?: string
   /** Allowed while playing (script source edits); everything else is blocked. */
   allowInPlay?: boolean
+  /** Name of the step in the history panel (derived from `merge` when omitted). */
+  label?: string
 }
 
 /** Applies a new document and records the previous one for undo. */
-export function commit(next: ProjectDoc, { merge, allowInPlay = false }: CommitOptions = {}): void {
+export function commit(next: ProjectDoc, { merge, allowInPlay = false, label }: CommitOptions = {}): void {
   const state = editorStore.get()
   if ((state.mode === 'play' && !allowInPlay) || next === state.doc) return
   const now = performance.now()
@@ -209,31 +248,38 @@ export function commit(next: ProjectDoc, { merge, allowInPlay = false }: CommitO
     : merge !== undefined && merge === mergeKey && now - mergeTime < MERGE_WINDOW_MS
   if (transaction) transaction.recorded = true
   if (!merging) {
-    past.push(state.doc)
+    past.push({ doc: state.doc, label: label ?? describeChange(next, merge) })
     if (past.length > HISTORY_LIMIT) past.shift()
   }
   mergeKey = merge ?? null
   mergeTime = now
   future.length = 0
-  editorStore.set({ doc: next, canUndo: past.length > 0, canRedo: false })
+  editorStore.set({ doc: next, ...historyState() })
 }
 
 export function undo(): void {
   const state = editorStore.get()
-  const prev = past.pop()
-  if (!prev || state.mode === 'play') return
-  future.push(state.doc)
+  if (!past.length || state.mode === 'play') return
+  const step = past.pop()!
+  future.push({ doc: state.doc, label: step.label })
   mergeKey = null
-  editorStore.set({ doc: prev, canUndo: past.length > 0, canRedo: true, ...reconcile(prev) })
+  editorStore.set({ doc: step.doc, ...historyState(), ...reconcile(step.doc) })
 }
 
 export function redo(): void {
   const state = editorStore.get()
-  const next = future.pop()
-  if (!next || state.mode === 'play') return
-  past.push(state.doc)
+  if (!future.length || state.mode === 'play') return
+  const step = future.pop()!
+  past.push({ doc: state.doc, label: step.label })
   mergeKey = null
-  editorStore.set({ doc: next, canUndo: true, canRedo: future.length > 0, ...reconcile(next) })
+  editorStore.set({ doc: step.doc, ...historyState(), ...reconcile(step.doc) })
+}
+
+/** Undoes or redoes until `steps` changes are applied (0 = the oldest state kept). */
+export function jumpToHistory(steps: number): void {
+  if (editorStore.get().mode === 'play') return
+  while (past.length > steps && past.length) undo()
+  while (past.length < steps && future.length) redo()
 }
 
 function replaceDoc(doc: ProjectDoc): void {
@@ -247,9 +293,8 @@ function replaceDoc(doc: ProjectDoc): void {
     editing: { kind: 'scene', id: first },
     lastScene: first,
     selection: [],
-    canUndo: false,
-    canRedo: false,
     openScript: null,
+    ...historyState(),
   })
 }
 
@@ -307,7 +352,7 @@ export function addEntities(added: EntityDoc[], selectIds = [added[0]?.id]): voi
   const { editing } = state()
   const root = editing.kind === 'prefab' ? entities().find((e) => e.parent === null) : undefined
   const fixed = root ? added.map((e) => (e.parent === null ? { ...e, parent: root.id } : e)) : added
-  setEntities([...entities(), ...fixed])
+  setEntities([...entities(), ...fixed], { label: added.length === 1 ? `Add ${added[0].name}` : `Add ${added.length} objects` })
   editorStore.set({ selection: selectIds.filter(Boolean) as string[] })
 }
 
@@ -329,7 +374,8 @@ export function deleteEntities(ids = state().selection): void {
     for (const x of subtreeIds(list, id)) doomed.add(x)
   }
   if (!doomed.size) return
-  setEntities(list.filter((e) => !doomed.has(e.id)))
+  const names = list.filter((e) => ids.includes(e.id)).map((e) => e.name)
+  setEntities(list.filter((e) => !doomed.has(e.id)), { label: names.length === 1 ? `Delete ${names[0]}` : `Delete ${names.length} objects` })
   editorStore.set({ selection: state().selection.filter((id) => !doomed.has(id)) })
 }
 
@@ -346,7 +392,7 @@ export function duplicateEntities(ids = state().selection): void {
     selected.push(copies[0].id)
   }
   if (!selected.length) return
-  setEntities(next)
+  setEntities(next, { label: selected.length === 1 ? `Duplicate ${list.find((e) => e.id === roots[0])?.name}` : `Duplicate ${selected.length} objects` })
   editorStore.set({ selection: selected })
 }
 
@@ -358,7 +404,7 @@ export function reparent(id: string, parent: string | null): void {
   const entity = list.find((e) => e.id === id)
   if (!entity || entity.parent === parent) return
   if (state().editing.kind === 'prefab' && (entity.parent === null || parent === null)) return
-  setEntities([...list.filter((e) => e.id !== id), { ...entity, parent }])
+  setEntities([...list.filter((e) => e.id !== id), { ...entity, parent }], { label: `Move ${entity.name}` })
 }
 
 export function updateProject(patch: Partial<ProjectDoc>, options?: CommitOptions): void {
@@ -379,7 +425,7 @@ export function createSceneAction(): void {
   let name = 'Scene'
   for (let i = 2; names.has(name); i++) name = `Scene ${i}`
   const scene = createScene(name)
-  commit({ ...d, scenes: [...d.scenes, scene] })
+  commit({ ...d, scenes: [...d.scenes, scene] }, { label: `Create scene ${name}` })
   openScene(scene.id)
 }
 
@@ -387,7 +433,7 @@ export function deleteScene(id: string): void {
   const d = state().doc
   if (d.scenes.length <= 1) return log('warn', 'A project needs at least one scene.')
   const scenes = d.scenes.filter((s) => s.id !== id)
-  commit({ ...d, scenes })
+  commit({ ...d, scenes }, { label: `Delete scene ${d.scenes.find((s) => s.id === id)?.name}` })
   const s = state()
   if (s.lastScene === id || (s.editing.kind === 'scene' && s.editing.id === id)) openScene(scenes[0].id)
 }
@@ -397,7 +443,7 @@ export function setStartScene(id: string): void {
   const d = state().doc
   const scene = d.scenes.find((s) => s.id === id)
   if (!scene) return
-  commit({ ...d, scenes: [scene, ...d.scenes.filter((s) => s.id !== id)] })
+  commit({ ...d, scenes: [scene, ...d.scenes.filter((s) => s.id !== id)] }, { label: `Start scene: ${scene.name}` })
 }
 
 // ---------------------------------------------------------------------------
@@ -430,7 +476,7 @@ export function createPrefab(id: string): void {
       ? { ...scene, entities: list.filter((e) => !ids.has(e.id) || e.id === id).map((e) => (e.id === id ? instance : e)) }
       : scene,
   )
-  commit({ ...s.doc, scenes, prefabs: [...s.doc.prefabs, prefab] })
+  commit({ ...s.doc, scenes, prefabs: [...s.doc.prefabs, prefab] }, { label: `Create prefab ${prefab.name}` })
   log('log', `Created prefab "${prefab.name}"`)
 }
 
@@ -463,12 +509,12 @@ export function unpackPrefab(id: string): void {
   const index = list.findIndex((e) => e.id === id)
   const next = [...list]
   next.splice(index, 1, ...plain)
-  setEntities(next)
+  setEntities(next, { label: `Unpack ${instance.name}` })
 }
 
 export function renamePrefab(id: string, name: string): void {
   const d = state().doc
-  commit({ ...d, prefabs: d.prefabs.map((p) => (p.id === id ? { ...p, name } : p)) })
+  commit({ ...d, prefabs: d.prefabs.map((p) => (p.id === id ? { ...p, name } : p)) }, { label: `Rename prefab ${name}` })
 }
 
 /** Deletes a prefab and every instance of it. */
@@ -483,7 +529,7 @@ export function deletePrefab(id: string): void {
     ...d,
     scenes: d.scenes.map((s) => ({ ...s, entities: strip(s.entities) })),
     prefabs: d.prefabs.filter((p) => p.id !== id).map((p) => ({ ...p, entities: strip(p.entities) })),
-  })
+  }, { label: `Delete prefab ${d.prefabs.find((p) => p.id === id)?.name}` })
   const s = state()
   if (s.editing.kind === 'prefab' && s.editing.id === id) openScene(s.lastScene)
   else editorStore.set(reconcile(state().doc))
@@ -497,7 +543,7 @@ export function createScript(): ScriptDoc {
   let name = 'NewScript'
   for (let i = 1; existing.has(name); i++) name = `NewScript${i}`
   const script: ScriptDoc = { id: newId(), name, source: SCRIPT_TEMPLATE }
-  updateProject({ scripts: [...state().doc.scripts, script] })
+  updateProject({ scripts: [...state().doc.scripts, script] }, { label: `Create script ${name}` })
   editorStore.set({ openScript: script.id })
   return script
 }
@@ -505,7 +551,7 @@ export function createScript(): ScriptDoc {
 /** Script edits are allowed while playing (they hot-reload). */
 export function updateScript(id: string, patch: Partial<ScriptDoc>): void {
   const scripts = state().doc.scripts.map((s) => (s.id === id ? { ...s, ...patch } : s))
-  commit({ ...state().doc, scripts }, { allowInPlay: true })
+  commit({ ...state().doc, scripts }, { allowInPlay: true, merge: `script.${id}`, label: `Edit script ${scripts.find((s) => s.id === id)?.name}` })
   const script = scripts.find((s) => s.id === id)
   if (script && state().mode === 'play') {
     for (const session of activeSessions) session.reloadScript(id, script.name, script.source)
@@ -521,7 +567,7 @@ export function deleteScript(id: string): void {
     scripts: d.scripts.filter((s) => s.id !== id),
     scenes: d.scenes.map((s) => ({ ...s, entities: strip(s.entities) })),
     prefabs: d.prefabs.map((p) => ({ ...p, entities: strip(p.entities) })),
-  })
+  }, { label: `Delete script ${d.scripts.find((s) => s.id === id)?.name}` })
   if (state().openScript === id) editorStore.set({ openScript: null })
 }
 

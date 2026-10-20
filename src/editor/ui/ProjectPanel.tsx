@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useStore } from '../../react'
 import { consoleStore } from '../console'
-import { componentDefaults, createEntity } from '../document'
+import { assetReferences, componentDefaults, createEntity } from '../document'
 import {
   addEntity,
   addPrefabInstance,
@@ -13,6 +13,7 @@ import {
   deleteScene,
   deleteScript,
   editorStore,
+  jumpToHistory,
   importAssets,
   openPrefab,
   openScene,
@@ -40,9 +41,42 @@ export function BottomPanel() {
         <button type="button" role="tab" aria-selected={tab === 'console'} className={tab === 'console' ? 'active' : ''} onClick={() => editorStore.set({ bottomTab: 'console' })}>
           Console {errors > 0 && <span className="badge error">{errors}</span>}
         </button>
+        <button type="button" role="tab" aria-selected={tab === 'history'} className={tab === 'history' ? 'active' : ''} onClick={() => editorStore.set({ bottomTab: 'history' })}>
+          History
+        </button>
       </header>
-      {tab === 'project' ? <ProjectPanel /> : <ConsolePanel />}
+      {tab === 'project' ? <ProjectPanel /> : tab === 'console' ? <ConsolePanel /> : <HistoryPanel />}
     </section>
+  )
+}
+
+/** Every undoable and redoable step; clicking one jumps there. */
+function HistoryPanel() {
+  const history = useStore(editorStore, (s) => s.history)
+  const redo = useStore(editorStore, (s) => s.redoHistory)
+  const playing = useStore(editorStore, (s) => s.mode === 'play')
+  const rows = [
+    { label: 'Start', steps: 0, done: true },
+    ...history.map((label, i) => ({ label, steps: i + 1, done: true })),
+    ...redo.map((label, i) => ({ label, steps: history.length + i + 1, done: false })),
+  ]
+  return (
+    <div className="panel-body history-list" role="list">
+      {rows.map((row) => (
+        <button
+          key={row.steps}
+          type="button"
+          role="listitem"
+          className={`history-row ${row.done ? '' : 'undone'} ${row.steps === history.length ? 'current' : ''}`}
+          disabled={playing}
+          onClick={() => jumpToHistory(row.steps)}
+          title={row.done ? 'Undo back to this step' : 'Redo up to this step'}
+        >
+          {row.label}
+        </button>
+      ))}
+      <p className="hint">Edits since the editor opened (up to 200). Click a step to undo or redo to it.</p>
+    </div>
   )
 }
 
@@ -279,7 +313,13 @@ function AssetTile({ asset, playing }: { asset: AssetMeta; playing: boolean }) {
         )}
         <button
           type="button"
-          onClick={() => window.confirm(`Delete ${asset.name}?`) && void deleteAsset(asset.id)}
+          onClick={() => {
+            const uses = assetReferences(editorStore.get().doc, asset.id, asset.name)
+            const message = uses.length
+              ? `${asset.name} is used in ${uses.length} place${uses.length === 1 ? '' : 's'}:\n\n${uses.slice(0, 12).join('\n')}${uses.length > 12 ? `\n…and ${uses.length - 12} more` : ''}\n\nDelete it anyway? Those references will show as missing.`
+              : `Delete ${asset.name}? Nothing in the project uses it.`
+            if (window.confirm(message)) void deleteAsset(asset.id)
+          }}
           aria-label={`Delete ${asset.name}`}
         >
           ×

@@ -28,6 +28,7 @@ import {
   select,
   updateEntities,
 } from '../editor'
+import { ColliderHandles } from './colliderHandles'
 import { ColliderOutlines } from './colliderOutlines'
 import { editorCamera, getOrbit } from './editorCamera'
 import { disposeVisual, NodeFactory } from './nodes'
@@ -122,6 +123,8 @@ export function createEditScene(): GameScene {
       const sync = new DocSync(factory, root)
       const outlines = new ColliderOutlines()
       scene.add(outlines.group)
+      const handles = new ColliderHandles()
+      scene.add(handles.group)
 
       // Lighting for prefab mode when the prefab has no lights of its own.
       const studio = new Group()
@@ -223,6 +226,52 @@ export function createEditScene(): GameScene {
       applyState()
       cleanups.push(editorStore.subscribe(applyState))
 
+      // Collider handles: the entity they edit (single plain selection with a collider, Scene view, handles on).
+      const handleTarget = () => {
+        const s = editorStore.get()
+        if (!s.colliderHandles || s.view !== 'scene' || s.selection.length !== 1) return null
+        const id = s.selection[0]
+        const entity = entities.find((e) => e.id === id)
+        return entity?.collider && ownerId(id) === id ? entity : null
+      }
+      const canvas = engine.canvas
+      const pointer = new Vector2()
+      const toPointer = (e: PointerEvent) => {
+        const rect = canvas.getBoundingClientRect()
+        pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1)
+        return pointer
+      }
+      const onHandleMove = (e: PointerEvent) => {
+        const target = handleTarget()
+        const change = handles.move(toPointer(e), editorCamera)
+        if (target && change) updateEntities([target.id], (en) => ({ collider: { ...en.collider!, ...change } }))
+      }
+      const onHandleUp = () => {
+        handles.end()
+        endTransaction()
+        orbit.enabled = editorStore.get().view === 'scene'
+        window.removeEventListener('pointermove', onHandleMove)
+        window.removeEventListener('pointerup', onHandleUp)
+      }
+      // Capture phase, so a handle wins over the transform gizmo and the orbit camera.
+      const onHandleDown = (e: PointerEvent) => {
+        const target = handleTarget()
+        if (e.button !== 0 || !target || !handles.begin(toPointer(e), editorCamera, target.collider!)) return
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        gizmoPressed = true // not a click: keep the selection
+        orbit.enabled = false
+        beginTransaction()
+        window.addEventListener('pointermove', onHandleMove)
+        window.addEventListener('pointerup', onHandleUp)
+      }
+      canvas.addEventListener('pointerdown', onHandleDown, { capture: true })
+      cleanups.push(() => {
+        canvas.removeEventListener('pointerdown', onHandleDown, { capture: true })
+        onHandleUp()
+        handles.dispose()
+      })
+
       cleanups.push(
         installPicking(engine, root, () => {
           const pressed = gizmoPressed
@@ -277,6 +326,8 @@ export function createEditScene(): GameScene {
             entry.helper.visible = visible && !entry.box.isEmpty()
           })
           for (let i = state.selection.length; i < selectionBoxes.length; i++) selectionBoxes[i].helper.visible = false
+          const handleEntity = handleTarget()
+          handles.update(handleEntity?.collider ?? null, handleEntity ? (sync.nodes.get(handleEntity.id) ?? null) : null, editorCamera)
           const selected = new Set(state.selection)
           outlines.update(
             visible ? entities.filter((e) => e.collider && (state.showColliders || selected.has(ownerId(e.id)))) : [],

@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../../react'
 import { defaultInputActions, defaultInputAxes, type InputActionDoc, type InputAxisDoc, LAYER_COUNT, type ProjectSettings } from '../document'
-import { editorStore, updateProject } from '../editor'
-import { TextInput } from './fields'
+import { editorStore, setStartScene, updateProject } from '../editor'
+import { Row, SelectField, TextInput } from './fields'
 
-type Tab = 'input' | 'layers'
+type Tab = 'general' | 'input' | 'layers'
 
 /** Project-wide settings (everything that isn't per scene or per entity). */
 export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
   const settings = useStore(editorStore, (s) => s.doc.settings)
-  const [tab, setTab] = useState<Tab>('input')
+  const [tab, setTab] = useState<Tab>('general')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -30,6 +30,9 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
           </button>
         </header>
         <nav className="dialog-tabs">
+          <button type="button" className={tab === 'general' ? 'active' : ''} onClick={() => setTab('general')}>
+            General
+          </button>
           <button type="button" className={tab === 'input' ? 'active' : ''} onClick={() => setTab('input')}>
             Input
           </button>
@@ -38,6 +41,7 @@ export function ProjectSettingsDialog({ onClose }: { onClose: () => void }) {
           </button>
         </nav>
         <div className="dialog-body">
+          {tab === 'general' && <GeneralSettings />}
           {tab === 'input' && <InputSettings settings={settings} set={set} />}
           {tab === 'layers' && <LayerSettings settings={settings} set={set} />}
         </div>
@@ -249,5 +253,27 @@ function KeysField({ value, onChange }: { value: string[]; onChange: (keys: stri
         {listening ? 'Press…' : '+ Key'}
       </button>
     </div>
+  )
+}
+
+function GeneralSettings() {
+  const doc = useStore(editorStore, (s) => s.doc)
+  const assets = useStore(editorStore, (s) => s.assets)
+  const entityCount = doc.scenes.reduce((n, s) => n + s.entities.length, 0)
+  return (
+    <>
+      <Row label="Project name">
+        <TextInput value={doc.name} onChange={(name) => updateProject({ name: name || 'Untitled' }, { label: 'Rename project' })} />
+      </Row>
+      <SelectField label="Start scene" value={doc.scenes[0].id} options={doc.scenes.map((s) => [s.id, s.name] as const)} onChange={setStartScene} />
+      <p className="hint">
+        Exported games begin in the start scene (Play in the editor runs the scene you have open). The name is the exported game's
+        title, and saves made with ctx.save are kept per project name.
+      </p>
+      <p className="hint">
+        {doc.scenes.length} scene{doc.scenes.length === 1 ? '' : 's'}, {entityCount} entities, {doc.prefabs.length} prefabs, {doc.scripts.length}{' '}
+        scripts, {assets.length} assets.
+      </p>
+    </>
   )
 }

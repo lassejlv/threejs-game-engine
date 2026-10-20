@@ -950,3 +950,61 @@ body.resizing canvas {
 .blend-point {
   border-top: 1px dashed var(--border);
 }
+.tree-search {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.tree-search input {
+  width: 100%;
+}
+.tree-row.context {
+  opacity: 0.55;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  overflow: auto;
+}
+.history-row {
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+.history-row:hover:not(:disabled) {
+  background: var(--bg-2);
+}
+.history-row.current {
+  background: var(--accent);
+  color: white;
+}
+.history-row.undone {
+  color: var(--text-dim);
+  font-style: italic;
+}
+.live-panel {
+  flex: 0 0 auto;
+  max-height: 55%;
+  overflow: auto;
+  border-bottom: 2px solid var(--accent);
+}
+.live-script .subhead {
+  margin: 8px 0 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.live-value {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.live-flag.on {
+  color: #5cff8a;
+}

@@ -161,6 +161,7 @@ export class PlayBuilder {
       const handle = { entity, name: e.name, object: node, body: world.tryGet(entity, RigidBody) }
       const parentEntity = e.parent ? (ids.get(e.parent) ?? null) : (parent?.entity ?? null)
       this.session.register(handle, parentEntity)
+      this.session.mapDoc(e.id, entity)
       this.session.attachScripts(handle, e)
       const emitter = node.userData.particles as ParticleEmitter | undefined
       if (emitter && e.particles?.destroyWhenDone) emitter.onFinished = () => this.session.destroy(entity)

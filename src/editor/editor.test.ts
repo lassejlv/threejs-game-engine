@@ -12,6 +12,7 @@ import {
   duplicateEntities,
   editorStore,
   endTransaction,
+  jumpToHistory,
   newProject,
   openPrefab,
   play,
@@ -376,5 +377,23 @@ describe('editor prefabs', () => {
     undoAll()
     expect(names()).toEqual(['Main Camera', 'Directional Light', 'Ground'])
     expect(s().doc.prefabs).toHaveLength(0)
+  })
+})
+
+describe('editor history panel', () => {
+  it('labels steps and jumps to any of them', () => {
+    addEntity(createEntity('Crate'))
+    const crate = byName('Crate')!
+    updateEntity(crate.id, { name: 'Box' }, { merge: `${crate.id}.name` })
+    addEntity(createEntity('Lamp'))
+    expect(s().history).toEqual(['Add Crate', 'Box: name', 'Add Lamp'])
+    jumpToHistory(1)
+    expect(names()).toContain('Crate')
+    expect(names()).not.toContain('Lamp')
+    expect(s().redoHistory).toEqual(['Box: name', 'Add Lamp'])
+    jumpToHistory(3)
+    expect(names()).toEqual(expect.arrayContaining(['Box', 'Lamp']))
+    jumpToHistory(0)
+    expect(names()).not.toContain('Crate')
   })
 })
