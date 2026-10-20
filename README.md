@@ -88,6 +88,8 @@ Each scene has a list of screen UI elements (text, button, bar, image), added fr
 
 ### Scripts
 
+The full reference is in [docs/script-api.md](docs/script-api.md) (generated from the editor's typings), with a tutorial per template in [docs/tutorials](docs/README.md). The API on that page is stable: from 1.0 it only changes in a major release.
+
 Project scripts are edited in Monaco. They get autocomplete, hover docs and type errors for the full script API, and saving a script while the game is playing hot-reloads it.
 
 ```js
