@@ -4,6 +4,7 @@ import { damp, dampAngle, moveTowards, teleport } from '../engine'
 import type { ParamValue, ProjectDoc } from './document'
 import type { AnimationApi } from './runtime/animator'
 import type { ParticlesApi } from './runtime/particles'
+import type { TimerHandle, TweenOptions } from './runtime/timers'
 import type { UiApi } from './runtime/gameUi'
 
 /** A live entity as seen from scripts. */
@@ -109,6 +110,20 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   /** Switches to another scene (by name) after this frame. */
   loadScene(name: string): void
   destroy(target?: Handle): void
+  /** Calls `fn` once after `seconds` of game time. Cancelled if this entity is destroyed. */
+  after(seconds: number, fn: () => void): TimerHandle
+  /** Calls `fn` every `seconds` until cancelled or this entity is destroyed. */
+  every(seconds: number, fn: () => void): TimerHandle
+  /** Animates numeric properties, e.g. `ctx.tween(ctx.object.position, { y: 3 }, 0.5, { ease: 'backOut' })`. */
+  tween<T extends object>(target: T, to: Partial<Record<keyof T, number>>, duration: number, options?: TweenOptions): TimerHandle
+  /** Listens for an event from any script; returns a function that stops listening. */
+  on(name: string, fn: (data: any) => void): () => void
+  /** Sends an event to every listener right away. */
+  emit(name: string, data?: unknown): void
+  /** Stores a JSON value in the browser that survives reloads (high scores, progress). */
+  save(key: string, value: unknown): void
+  load<T>(key: string, fallback: T): T
+  deleteSave(key: string): void
   log(...args: unknown[]): void
   warn(...args: unknown[]): void
   error(...args: unknown[]): void
@@ -188,6 +203,17 @@ export function scriptLabel(id: string, doc: ProjectDoc): string {
 const v1 = new THREE.Vector3()
 const v2 = new THREE.Vector3()
 const UP = new THREE.Vector3(0, 1, 0)
+const DOWN = new THREE.Vector3(0, -1, 0)
+
+/** Sends a body back to the last checkpoint (set by the Checkpoint script) or to `fallback`. */
+function respawn(ctx: ScriptContext, fallback: THREE.Vector3 | undefined): void {
+  const point = (ctx.globals.checkpoint as THREE.Vector3 | undefined) ?? fallback
+  if (!point) return
+  if (ctx.body) {
+    teleport(ctx.body, point)
+    ctx.body.velocity.set(0, 0, 0)
+  } else ctx.object.position.copy(point)
+}
 
 const Rotate: Behavior = {
   name: 'Rotate',
@@ -232,9 +258,9 @@ const PlayerController: Behavior = {
     if (!body) return
     const p = ctx.params as Record<string, number>
     const { input } = ctx
-    const pad = input.gamepad.axes
-    const forward = input.axis(['KeyS', 'ArrowDown'], ['KeyW', 'ArrowUp']) - pad[1]
-    const strafe = input.axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']) + pad[0]
+    // Named bindings from Project Settings → Input, so players can remap them.
+    const forward = input.getAxis('MoveY')
+    const strafe = input.getAxis('MoveX')
 
     ctx.engine.camera.getWorldDirection(v1)
     v1.y = 0
@@ -244,7 +270,7 @@ const PlayerController: Behavior = {
     const wish = v1.multiplyScalar(forward).addScaledVector(v2, strafe)
     if (wish.lengthSq() > 1) wish.normalize()
 
-    const sprint = input.isDown(['ShiftLeft', 'ShiftRight', 'GamepadRB'])
+    const sprint = input.action('Sprint')
     const speed = sprint ? p.sprintSpeed : p.speed
     const accel = (body.grounded ? p.acceleration : p.acceleration * 0.35) * dt
     body.velocity.x = moveTowards(body.velocity.x, wish.x * speed, accel)
@@ -253,17 +279,21 @@ const PlayerController: Behavior = {
     // Coyote time + jump buffering.
     const s = ctx.state as { sinceGrounded: number; sinceJump: number; spawn?: THREE.Vector3 }
     s.sinceGrounded = body.grounded ? 0 : s.sinceGrounded + dt
-    s.sinceJump = input.wasPressed(['Space', 'GamepadA']) ? 0 : s.sinceJump + dt
+    s.sinceJump = input.actionPressed('Jump') ? 0 : s.sinceJump + dt
     if (s.sinceJump <= 0.12 && s.sinceGrounded <= 0.12) {
       body.velocity.y = p.jumpSpeed
       s.sinceGrounded = s.sinceJump = Infinity
     }
-    if (body.velocity.y > 0 && !input.isDown(['Space', 'GamepadA'])) body.velocity.y *= 0.9
+    if (body.velocity.y > 0 && !input.action('Jump')) body.velocity.y *= 0.9
 
-    if (body.position.y < p.respawnBelow && s.spawn) {
-      teleport(body, s.spawn)
-      body.velocity.set(0, 0, 0)
+    // Ride kinematic platforms: move along with whatever kinematic body is underfoot.
+    if (body.grounded) {
+      const ground = ctx.physics.raycast(v1.copy(body.position), DOWN, 2.5)
+      const carrier = ground?.handle.body
+      if (carrier?.kinematic) body.position.addScaledVector(carrier.velocity, dt)
     }
+
+    if (body.position.y < p.respawnBelow) respawn(ctx, s.spawn)
   },
   update(ctx, dt) {
     const v = ctx.body?.velocity
@@ -294,8 +324,8 @@ const FollowCamera: Behavior = {
       s.yaw -= input.pointer.dx * 0.005
       s.pitch += input.pointer.dy * 0.004
     }
-    s.yaw -= input.gamepad.axes[2] * 2.5 * dt
-    s.pitch = THREE.MathUtils.clamp(s.pitch + input.gamepad.axes[3] * 1.8 * dt, -0.1, 1.2)
+    s.yaw -= input.getAxis('LookX') * 2.5 * dt
+    s.pitch = THREE.MathUtils.clamp(s.pitch + input.getAxis('LookY') * 1.8 * dt, -0.1, 1.2)
     s.distance = THREE.MathUtils.clamp(s.distance * (1 + input.pointer.wheel * 0.001), 3, 30)
 
     target.object.getWorldPosition(v1)
@@ -362,6 +392,183 @@ const DestroyBelow: Behavior = {
   },
 }
 
+const MovingPlatform: Behavior = {
+  name: 'MovingPlatform',
+  description: 'Moves back and forth by an offset (meters), pausing at each end. Use a kinematic Rigid Body so it carries players and pushes boxes.',
+  params: { x: 0, y: 3, z: 0, duration: 2, wait: 0.5 },
+  start(ctx) {
+    ctx.state.from = (ctx.body?.position ?? ctx.object.position).clone()
+    ctx.state.t = 0
+    ctx.state.dir = 1
+    ctx.state.pause = 0
+  },
+  fixedUpdate(ctx, dt) {
+    const p = ctx.params as { x: number; y: number; z: number; duration: number; wait: number }
+    const s = ctx.state as { from: THREE.Vector3; t: number; dir: number; pause: number }
+    if (s.pause > 0) s.pause -= dt
+    else {
+      s.t += (s.dir * dt) / Math.max(0.05, p.duration)
+      if (s.t >= 1 || s.t <= 0) {
+        s.t = THREE.MathUtils.clamp(s.t, 0, 1)
+        s.dir = -s.dir
+        s.pause = p.wait
+      }
+    }
+    const k = THREE.MathUtils.smoothstep(s.t, 0, 1)
+    const target = v1.set(p.x, p.y, p.z).multiplyScalar(k).add(s.from)
+    // Kinematic bodies move by velocity, so whatever stands on them can follow.
+    if (ctx.body) ctx.body.velocity.copy(target).sub(ctx.body.position).divideScalar(dt)
+    else ctx.object.position.copy(target)
+  },
+}
+
+const Patrol: Behavior = {
+  name: 'Patrol',
+  description: 'Walks back and forth along its local X or Z axis, facing where it goes. Works with or without a character Rigid Body.',
+  params: { distance: 6, speed: 2.5, axis: 'x', wait: 0.4 },
+  start(ctx) {
+    ctx.state.from = (ctx.body?.position ?? ctx.object.position).clone()
+    ctx.state.dir = 1
+    ctx.state.pause = 0
+    const p = ctx.params as { axis: string }
+    ctx.state.direction = new THREE.Vector3(p.axis === 'z' ? 0 : 1, 0, p.axis === 'z' ? 1 : 0).applyQuaternion(ctx.object.quaternion).setY(0).normalize()
+  },
+  fixedUpdate(ctx, dt) {
+    const p = ctx.params as { distance: number; speed: number; wait: number }
+    const s = ctx.state as { from: THREE.Vector3; dir: number; pause: number; direction: THREE.Vector3 }
+    const position = ctx.body?.position ?? ctx.object.position
+    const along = v1.copy(position).sub(s.from).dot(s.direction)
+    if (s.pause > 0) {
+      s.pause -= dt
+      if (ctx.body) ctx.body.velocity.x = ctx.body.velocity.z = 0
+      return
+    }
+    if ((s.dir > 0 && along >= p.distance) || (s.dir < 0 && along <= 0)) {
+      s.dir = -s.dir
+      s.pause = p.wait
+      return
+    }
+    const step = v2.copy(s.direction).multiplyScalar(s.dir * p.speed)
+    if (ctx.body) {
+      ctx.body.velocity.x = step.x
+      ctx.body.velocity.z = step.z
+    } else ctx.object.position.addScaledVector(step, dt)
+  },
+  update(ctx, dt) {
+    const s = ctx.state as { dir: number; direction: THREE.Vector3 }
+    if (!s.direction) return
+    const facing = Math.atan2(-s.direction.x * s.dir, -s.direction.z * s.dir)
+    ctx.object.rotation.y = dampAngle(ctx.object.rotation.y, facing, 10, dt)
+  },
+}
+
+const Health: Behavior = {
+  name: 'Health',
+  description:
+    'Hit points. Other scripts hurt it with ctx.emit("damage", { target, amount }) (see Hazard). On death it respawns at the last checkpoint or is destroyed.',
+  params: { max: 3, invincibleTime: 0.8, respawn: false, hud: '' },
+  start(ctx) {
+    const p = ctx.params as { max: number; invincibleTime: number; respawn: boolean; hud: string }
+    const s = ctx.state as { hp: number; safe: number; spawn?: THREE.Vector3 }
+    s.hp = p.max
+    s.safe = 0
+    s.spawn = (ctx.body?.position ?? ctx.object.position).clone()
+    const show = () => p.hud && ctx.hud.set(p.hud, `${'♥'.repeat(Math.max(0, s.hp))}${'♡'.repeat(Math.max(0, p.max - s.hp))}`)
+    show()
+    const isMe = (target: unknown) =>
+      (target as Handle | undefined)?.entity === ctx.entity || target === ctx.name
+    ctx.on('heal', (data: { target: unknown; amount?: number }) => {
+      if (!isMe(data?.target)) return
+      s.hp = Math.min(p.max, s.hp + (data.amount ?? 1))
+      show()
+    })
+    ctx.on('damage', (data: { target: unknown; amount?: number }) => {
+      if (!isMe(data?.target) || s.safe > 0) return
+      s.hp -= data.amount ?? 1
+      s.safe = p.invincibleTime
+      show()
+      if (s.hp > 0) return
+      ctx.emit('died', { target: ctx })
+      if (p.respawn) {
+        respawn(ctx, s.spawn)
+        s.hp = p.max
+        show()
+      } else ctx.destroy()
+    })
+  },
+  update(ctx, dt) {
+    const s = ctx.state as { safe: number }
+    if (s.safe > 0) {
+      s.safe -= dt
+      // Blink while invincible.
+      ctx.object.visible = s.safe <= 0 || Math.floor(s.safe * 12) % 2 === 0
+    }
+  },
+}
+
+const Hazard: Behavior = {
+  name: 'Hazard',
+  description: 'Damages whatever touches it (anything with a Health script, or only the named target) and knocks it back.',
+  params: { damage: 1, target: '', knockback: 8 },
+  onCollisionEnter(ctx, other) {
+    const p = ctx.params as { damage: number; target: string; knockback: number }
+    if (p.target && other.name !== p.target) return
+    ctx.emit('damage', { target: other, amount: p.damage, from: ctx })
+    if (other.body && p.knockback > 0) {
+      const away = v1.copy(other.body.position).sub(ctx.object.getWorldPosition(v2)).setY(0)
+      if (away.lengthSq() < 1e-6) away.set(0, 0, 1)
+      away.normalize().multiplyScalar(p.knockback)
+      other.body.velocity.set(away.x, p.knockback * 0.6, away.z)
+    }
+  },
+}
+
+const Checkpoint: Behavior = {
+  name: 'Checkpoint',
+  description: 'When the player touches it, falling or dying respawns them here. Needs a trigger collider.',
+  params: { player: 'Player', message: 'Checkpoint!' },
+  onCollisionEnter(ctx, other) {
+    const p = ctx.params as { player: string; message: string }
+    if (other.name !== p.player || ctx.globals.checkpointId === ctx.entity) return
+    ctx.globals.checkpointId = ctx.entity
+    ctx.globals.checkpoint = ctx.object.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 1, 0))
+    ctx.sound.tone(660, 0.08, { type: 'triangle', volume: 0.15 })
+    ctx.sound.tone(990, 0.15, { type: 'triangle', volume: 0.15, delay: 0.08 })
+    if (p.message) {
+      ctx.hud.message(p.message)
+      ctx.after(1.2, () => ctx.hud.message(null))
+    }
+  },
+}
+
+const Door: Behavior = {
+  name: 'Door',
+  description:
+    'Opens when the opener comes close, or when they press an action nearby (e.g. Interact). Swings by an angle (put it on a hinge entity with the door as a child) and/or slides up.',
+  params: { opener: 'Player', distance: 3, action: '', angle: 90, slide: 0, speed: 4 },
+  start(ctx) {
+    ctx.state.baseAngle = ctx.object.rotation.y
+    ctx.state.baseY = ctx.object.position.y
+    ctx.state.open = 0
+    ctx.state.toggled = false
+  },
+  update(ctx, dt) {
+    const p = ctx.params as { opener: string; distance: number; action: string; angle: number; slide: number; speed: number }
+    const s = ctx.state as { baseAngle: number; baseY: number; open: number; toggled: boolean }
+    const opener = ctx.find(p.opener)
+    const near = opener ? opener.object.getWorldPosition(v1).distanceTo(ctx.object.getWorldPosition(v2)) < p.distance : false
+    if (p.action) {
+      if (near && ctx.input.actionPressed(p.action)) s.toggled = !s.toggled
+    }
+    const want = p.action ? (s.toggled ? 1 : 0) : near ? 1 : 0
+    s.open = damp(s.open, want, p.speed, dt)
+    ctx.object.rotation.y = s.baseAngle + THREE.MathUtils.degToRad(p.angle) * s.open
+    ctx.object.position.y = s.baseY + p.slide * s.open
+  },
+}
+
 export const BUILTINS: Record<string, Behavior> = Object.fromEntries(
-  [Rotate, Bob, PlayerController, FollowCamera, Collectible, DestroyBelow].map((b) => [`builtin:${b.name}`, b]),
+  [Rotate, Bob, PlayerController, FollowCamera, Collectible, DestroyBelow, MovingPlatform, Patrol, Health, Hazard, Checkpoint, Door].map(
+    (b) => [`builtin:${b.name}`, b],
+  ),
 )

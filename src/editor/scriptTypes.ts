@@ -35,8 +35,13 @@ declare module 'engine' {
     /** -1, 0 or 1. */
     axis(negative: string | string[], positive: string | string[]): number
     bind(action: string, codes: string[]): void
+    /** Held: a named action from Project Settings → Input (Jump, Sprint, Fire, Interact...). */
     action(name: string): boolean
     actionPressed(name: string): boolean
+    actionReleased(name: string): boolean
+    hasAction(name: string): boolean
+    /** -1..1 from a named axis in Project Settings → Input (MoveX, MoveY, LookX, LookY): keys, gamepad and touch combined. */
+    getAxis(name: string): number
     requestPointerLock(): void
     exitPointerLock(): void
     readonly pointer: { x: number; y: number; dx: number; dy: number; wheel: number; locked: boolean }
@@ -119,6 +124,17 @@ declare module 'engine' {
     readonly count: number
   }
 
+  interface Timer { cancel(): void; readonly done: boolean }
+  type Ease = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut' | 'backOut' | 'bounceOut' | 'elasticOut'
+  interface TweenOptions {
+    ease?: Ease
+    delay?: number
+    loop?: boolean
+    /** With loop: go back and forth. */
+    yoyo?: boolean
+    onComplete?: () => void
+  }
+
   interface Context<P = Record<string, any>> extends Handle {
     /** Inspector-editable values declared in params. */
     readonly params: P
@@ -142,6 +158,20 @@ declare module 'engine' {
     spawn(prefab: string, options?: { position?: Vec3Like; rotation?: Vec3Like; parent?: Handle }): Handle | undefined
     loadScene(name: string): void
     destroy(target?: Handle): void
+    /** Calls fn once after some seconds of game time. Cancelled if this entity is destroyed. */
+    after(seconds: number, fn: () => void): Timer
+    /** Calls fn every few seconds until cancelled or this entity is destroyed. */
+    every(seconds: number, fn: () => void): Timer
+    /** Animates numeric properties: ctx.tween(ctx.object.position, { y: 3 }, 0.5, { ease: 'backOut' }) */
+    tween<T extends object>(target: T, to: Partial<Record<keyof T, number>>, duration: number, options?: TweenOptions): Timer
+    /** Listens for an event from any script; returns a function that stops listening. */
+    on(name: string, fn: (data: any) => void): () => void
+    /** Sends an event to every listener right away, e.g. ctx.emit('damage', { target: other, amount: 1 }). */
+    emit(name: string, data?: unknown): void
+    /** Stores a JSON value that survives reloads (high scores, progress). */
+    save(key: string, value: unknown): void
+    load<T>(key: string, fallback: T): T
+    deleteSave(key: string): void
     log(...args: unknown[]): void
     warn(...args: unknown[]): void
     error(...args: unknown[]): void

@@ -497,3 +497,95 @@ describe('PlaySession', () => {
     expect(container.textContent).not.toContain('1 / 32')
   })
 })
+
+describe('PlaySession script services', () => {
+  const tick = (s: Setup, dt = 1 / 60) => {
+    s.frame(dt)
+    s.systems.find((sys) => sys.name === 'scripts.timers')!.run(s.engine, dt)
+    s.engine.world.flush()
+  }
+
+  it('runs ctx.after / ctx.every / ctx.tween on game time and cancels them with the entity', () => {
+    const s = setup()
+    const id = s.script(
+      'Timed',
+      `export default {
+        start(ctx) {
+          ctx.state.v = { x: 0 }
+          ctx.after(0.5, () => ctx.globals.calls.push('after'))
+          ctx.every(0.25, () => ctx.globals.calls.push('every'))
+          ctx.tween(ctx.state.v, { x: 10 }, 1, { ease: 'linear' })
+          ctx.globals.v = ctx.state.v
+        },
+      }`,
+    )
+    const handle = s.entity('Clock', [{ script: id }])
+    for (let i = 0; i < 31; i++) tick(s)
+    expect(s.calls.filter((c) => c === 'after')).toHaveLength(1)
+    expect(s.calls.filter((c) => c === 'every')).toHaveLength(2)
+    expect((s.session.globals.v as { x: number }).x).toBeCloseTo(5, 0)
+    s.session.destroy(handle.entity)
+    s.engine.world.flush()
+    const before = s.calls.length
+    for (let i = 0; i < 60; i++) tick(s)
+    expect(s.calls.length).toBe(before)
+  })
+
+  it('delivers ctx.emit to ctx.on listeners and drops listeners of destroyed entities', () => {
+    const s = setup()
+    const listener = s.script(
+      'Listener',
+      `export default { start(ctx) { ctx.on('ping', (n) => ctx.globals.calls.push(ctx.name + ':' + n)) } }`,
+    )
+    const sender = s.script('Sender', `export default { update(ctx) { ctx.emit('ping', ctx.time.frame ?? 1) } }`)
+    const a = s.entity('A', [{ script: listener }])
+    s.entity('B', [{ script: listener }])
+    s.entity('S', [{ script: sender }])
+    tick(s)
+    expect(s.calls).toEqual(['A:1', 'B:1'])
+    s.session.destroy(a.entity)
+    s.engine.world.flush()
+    tick(s)
+    expect(s.calls).toEqual(['A:1', 'B:1', 'B:1'])
+  })
+
+  it('saves and loads JSON values per project', () => {
+    const s = setup()
+    const id = s.script(
+      'Saver',
+      `export default { start(ctx) {
+        ctx.globals.calls.push(String(ctx.load('best', 0)))
+        ctx.save('best', { score: 42 })
+        ctx.globals.calls.push(JSON.stringify(ctx.load('best', null)))
+        ctx.deleteSave('best')
+        ctx.globals.calls.push(String(ctx.load('best', 'gone')))
+      } }`,
+    )
+    s.entity('Saver', [{ script: id }])
+    tick(s)
+    expect(s.calls).toEqual(['0', '{"score":42}', 'gone'])
+  })
+
+  it('Health takes damage from a Hazard and is destroyed at zero', () => {
+    const s = setup()
+    const victim = s.entity('Slime', [{ script: 'builtin:Health', params: { max: 2, invincibleTime: 0 } }])
+    const spikes = s.entity('Spikes', [{ script: 'builtin:Hazard', params: { knockback: 0 } }])
+    tick(s)
+    s.engine.events.emit('collisionEnter', { a: spikes.entity, b: victim.entity })
+    expect(s.engine.world.isAlive(victim.entity)).toBe(true)
+    s.engine.events.emit('collisionEnter', { a: spikes.entity, b: victim.entity })
+    expect(s.engine.world.isAlive(victim.entity)).toBe(false)
+  })
+
+  it('MovingPlatform and Patrol move objects without a rigid body', () => {
+    const s = setup()
+    const platform = s.entity('Lift', [{ script: 'builtin:MovingPlatform', params: { x: 0, y: 4, z: 0, duration: 1, wait: 0 } }])
+    const guard = s.entity('Guard', [{ script: 'builtin:Patrol', params: { distance: 3, speed: 3, wait: 0 } }])
+    for (let i = 0; i < 60; i++) tick(s)
+    expect(platform.object.position.y).toBeCloseTo(4, 0)
+    expect(guard.object.position.x).toBeGreaterThan(2.5)
+    for (let i = 0; i < 60; i++) tick(s)
+    expect(platform.object.position.y).toBeLessThan(0.5)
+    expect(guard.object.position.x).toBeLessThan(1)
+  })
+})

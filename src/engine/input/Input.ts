@@ -13,6 +13,13 @@
  */
 export type InputPhase = 'frame' | 'fixed'
 
+interface AxisBinding {
+  negative: readonly string[]
+  positive: readonly string[]
+  gamepadAxis: number
+  invert: boolean
+}
+
 type Codes = string | readonly string[]
 
 const GAMEPAD_BUTTONS = [
@@ -52,6 +59,9 @@ export class Input {
   private readonly pressed = { frame: new Set<string>(), fixed: new Set<string>() }
   private readonly released = { frame: new Set<string>(), fixed: new Set<string>() }
   private readonly actions = new Map<string, readonly string[]>()
+  private readonly axisBindings = new Map<string, AxisBinding>()
+  /** Values pushed by on-screen controls (touch joysticks), added to bound axes. */
+  private readonly virtualAxes = new Map<string, number>()
   private element: HTMLElement | null = null
   private abort: AbortController | null = null
 
@@ -117,6 +127,36 @@ export class Input {
 
   actionReleased(name: string): boolean {
     return this.wasReleased(this.codesFor(name))
+  }
+
+  /**
+   * Maps a named axis to keys and, optionally, a gamepad stick axis (0-3), e.g.
+   * `bindAxis('MoveX', ['KeyA'], ['KeyD'], 0)`. `invert` flips the stick (gamepad Y is down-positive).
+   */
+  bindAxis(name: string, negative: readonly string[], positive: readonly string[], gamepadAxis = -1, invert = false): void {
+    this.axisBindings.set(name, { negative, positive, gamepadAxis, invert })
+  }
+
+  /** -1..1 from a bound axis: keys, gamepad stick and on-screen controls combined. */
+  getAxis(name: string): number {
+    const binding = this.axisBindings.get(name)
+    let value = this.virtualAxes.get(name) ?? 0
+    if (binding) {
+      value += this.axis(binding.negative, binding.positive)
+      if (binding.gamepadAxis >= 0) value += (this.gamepad.axes[binding.gamepadAxis] ?? 0) * (binding.invert ? -1 : 1)
+    }
+    return Math.max(-1, Math.min(1, value))
+  }
+
+  /** On-screen controls (e.g. a touch joystick) drive axes through this. */
+  setVirtualAxis(name: string, value: number): void {
+    if (value === 0) this.virtualAxes.delete(name)
+    else this.virtualAxes.set(name, value)
+  }
+
+  /** Whether an action name has bindings. */
+  hasAction(name: string): boolean {
+    return this.actions.has(name)
   }
 
   requestPointerLock(): void {

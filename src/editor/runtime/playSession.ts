@@ -3,6 +3,7 @@ import { defineComponent, type Engine, type Entity, type RapierPhysics, type Sys
 import { log } from '../console'
 import type { Animator } from './animator'
 import type { ParticleEmitter } from './particles'
+import { Timers } from './timers'
 import { GameUi } from './gameUi'
 import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
 import {
@@ -56,6 +57,19 @@ export class PlaySession {
   private readonly hud: HudApi
   private readonly sound: SoundApi
   private readonly oneShots = new Set<Audio | PositionalAudio>()
+  /** Script timers and tweens, cancelled per entity when it is destroyed. */
+  readonly timers = new Timers((fn, owner) => {
+    try {
+      fn()
+      return true
+    } catch (error) {
+      const name = typeof owner === 'number' ? this.handles.get(owner)?.name : undefined
+      log('error', `Timer callback${name ? ` on "${name}"` : ''} threw and was stopped: ${describe(error)}`)
+      return false
+    }
+  })
+  /** Script-to-script events (`ctx.emit` / `ctx.on`). */
+  private readonly listeners = new Map<string, { owner: Entity; fn: (data: unknown) => void }[]>()
 
   constructor(
     private readonly engine: Engine,
@@ -150,6 +164,8 @@ export class PlaySession {
             activeSessions.delete(this)
             offEnter()
             offExit()
+            this.timers.clear()
+            this.listeners.clear()
             this.ui.dispose()
             for (const sound of this.oneShots) if (sound.isPlaying) sound.stop()
             this.listener.removeFromParent()
@@ -157,6 +173,7 @@ export class PlaySession {
         },
       },
       { name: 'scripts.update', phase: 'update', run: run('update') },
+      { name: 'scripts.timers', phase: 'update', order: 5, run: (_engine, dt) => this.timers.update(dt) },
       { name: 'scripts.lateUpdate', phase: 'late', run: run('lateUpdate') },
       {
         name: 'ui.labels',
@@ -263,9 +280,67 @@ export class PlaySession {
         return entity === undefined ? undefined : this.handles.get(entity)
       },
       destroy: (target = handle) => this.destroy(target.entity),
+      after: (seconds, fn) => this.timers.after(handle.entity, seconds, fn),
+      every: (seconds, fn) => this.timers.every(handle.entity, seconds, fn),
+      tween: (target, to, duration, options) => this.timers.tween(handle.entity, target, to, duration, options),
+      on: (name, fn) => this.listen(handle.entity, name, fn),
+      emit: (name, data) => this.emit(name, data),
+      save: (key, value) => {
+        try {
+          localStorage.setItem(this.saveKey(key), JSON.stringify(value))
+        } catch (error) {
+          log('warn', prefix, `save("${key}") failed: ${describe(error)}`)
+        }
+      },
+      load: (key, fallback) => {
+        try {
+          const raw = localStorage.getItem(this.saveKey(key))
+          return raw === null ? fallback : JSON.parse(raw)
+        } catch {
+          return fallback
+        }
+      },
+      deleteSave: (key) => {
+        try {
+          localStorage.removeItem(this.saveKey(key))
+        } catch {
+          // Storage unavailable: nothing to delete.
+        }
+      },
       log: (...args) => log('log', prefix, ...args),
       warn: (...args) => log('warn', prefix, ...args),
       error: (...args) => log('error', prefix, ...args),
+    }
+  }
+
+  /** Saves are per project, so two exported games on one site don't share them. */
+  private saveKey(key: string): string {
+    return `game-save:${this.doc.name}:${key}`
+  }
+
+  private listen(owner: Entity, name: string, fn: (data: unknown) => void): () => void {
+    const list = this.listeners.get(name) ?? []
+    const entry = { owner, fn }
+    list.push(entry)
+    this.listeners.set(name, list)
+    return () => {
+      const current = this.listeners.get(name)
+      if (current) this.listeners.set(name, current.filter((e) => e !== entry))
+    }
+  }
+
+  /** Calls every listener for `name` right away. A throwing listener is reported and removed. */
+  emit(name: string, data?: unknown): void {
+    const list = this.listeners.get(name)
+    if (!list) return
+    for (const entry of [...list]) {
+      if (!this.engine.world.isAlive(entry.owner)) continue
+      try {
+        entry.fn(data)
+      } catch (error) {
+        log('error', `"${this.handles.get(entry.owner)?.name}": listener for "${name}" threw and was removed: ${describe(error)}`)
+        this.listeners.set(name, (this.listeners.get(name) ?? []).filter((e) => e !== entry))
+      }
     }
   }
 
@@ -334,6 +409,8 @@ export class PlaySession {
     const { world } = this.engine
     if (!world.isAlive(entity)) return
     for (const child of this.children.get(entity) ?? []) this.destroy(child)
+    this.timers.cancelOwner(entity)
+    for (const [name, list] of this.listeners) this.listeners.set(name, list.filter((e) => e.owner !== entity))
     for (const instance of world.tryGet(entity, Scripts) ?? []) {
       const fn = instance.behavior.onDestroy
       if (fn && instance.started) this.guard(instance, () => fn.call(instance.behavior, instance.ctx))

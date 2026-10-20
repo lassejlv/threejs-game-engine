@@ -23,6 +23,8 @@ import {
 import { log } from '../console'
 import {
   type ColliderDoc,
+  defaultInputActions,
+  defaultInputAxes,
   defaultProjectSettings,
   depthFirst,
   type EntityDoc,
@@ -213,6 +215,11 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
       const R = await loadRapier()
       if (signal.aborted) return
       engine.physics.gravity.set(0, -scene.settings.gravity, 0)
+      // Built-in names first, so the built-in scripts work even if a project removed them; project bindings win.
+      for (const a of [...defaultInputActions(), ...doc.settings.inputActions]) engine.input.bind(a.name, a.keys)
+      for (const a of [...defaultInputAxes(), ...doc.settings.inputAxes]) {
+        engine.input.bindAxis(a.name, a.negative, a.positive, a.gamepadAxis, a.invert)
+      }
       const environment = new SceneEnvironment(engine, options.assets)
       environment.apply(scene.settings)
       engine.addSystem({ name: 'environment', phase: 'render', run: () => {}, init: () => () => environment.dispose() })

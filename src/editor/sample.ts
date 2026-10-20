@@ -40,13 +40,13 @@ export default {
 }
 `
 
-const LAUNCHER_SCRIPT = `// Press E to throw a ball (spawns the "Ball" prefab).
+const LAUNCHER_SCRIPT = `// Press Fire (E or gamepad X) to throw a ball (spawns the "Ball" prefab).
 /** @type {import('engine').Script} */
 export default {
   params: { prefab: 'Ball', force: 9 },
 
   update(ctx) {
-    if (!ctx.input.wasPressed('KeyE')) return
+    if (!ctx.input.actionPressed('Fire')) return
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(ctx.object.quaternion)
     const position = ctx.object.position.clone().addScaledVector(forward, 1.2)
     position.y += 0.6
@@ -106,6 +106,7 @@ export function sampleProject(): ProjectDoc {
       scripts: [
         { script: 'builtin:PlayerController', params: {} },
         { script: launcherScript.id, params: {} },
+        { script: 'builtin:Health', params: { max: 3, respawn: true, hud: 'Health' } },
       ],
     },
     [
@@ -324,6 +325,40 @@ export function sampleProject(): ProjectDoc {
     }),
   )
   add(instance(portal, [-20, 1.6, -20], null, { name: 'Portal to Bonus Room' }))
+
+  // A patrolling hazard: touching it costs a heart and knocks the player back.
+  add(
+    createEntity('Spike Roller', {
+      transform: at([-12, 0.7, 9], [0, 0, 0], [1.2, 1.2, 1.2]),
+      mesh: mesh({ shape: 'sphere', color: '#d9434b', roughness: 0.35, emissive: '#5a0a0f' }),
+      collider: { ...componentDefaults.collider(), shape: 'sphere', trigger: true },
+      scripts: [
+        { script: 'builtin:Patrol', params: { distance: 8, speed: 3 } },
+        { script: 'builtin:Rotate', params: { x: 0, y: 0, z: -240 } },
+        { script: 'builtin:Hazard', params: { target: 'Player' } },
+      ],
+    }),
+  )
+  // Checkpoint on the top step: falling off the level brings the player back here.
+  const top = coinSpots[8]
+  add(
+    createEntity('Checkpoint', {
+      transform: at([top[0], top[1] - 0.6, top[2]], [0, 0, 0], [0.25, 1.2, 0.25]),
+      mesh: mesh({ shape: 'cylinder', color: '#5cff8a', emissive: '#1f8a3f', emissiveIntensity: 1.2 }),
+      collider: { ...componentDefaults.collider(), shape: 'sphere', radius: 1.5, trigger: true },
+      scripts: [{ script: 'builtin:Checkpoint', params: {} }],
+    }),
+  )
+  // Elevator: a kinematic platform that carries the player up and down.
+  add(
+    createEntity('Elevator', {
+      transform: at([9, 0.15, 9], [0, 0, 0], [2.5, 0.3, 2.5]),
+      mesh: mesh({ color: '#8e9bb0', metalness: 0.4, roughness: 0.5 }),
+      rigidBody: { ...componentDefaults.rigidBody(), type: 'kinematic' },
+      collider: componentDefaults.collider(),
+      scripts: [{ script: 'builtin:MovingPlatform', params: { x: 0, y: 5, z: 0, duration: 3, wait: 1 } }],
+    }),
+  )
 
   const coins = add(createEntity('Coins'))
   for (const p of coinSpots) add(instance(coin, p, coins.id))

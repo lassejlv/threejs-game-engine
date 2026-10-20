@@ -304,6 +304,44 @@ export interface ProjectSettings {
   layerNames: string[]
   /** Per layer: bit mask of the layers it collides with (kept symmetric). */
   layerCollisions: number[]
+  /** Named buttons scripts read with `ctx.input.action('Jump')`. */
+  inputActions: InputActionDoc[]
+  /** Named -1..1 axes scripts read with `ctx.input.getAxis('MoveX')`. */
+  inputAxes: InputAxisDoc[]
+}
+
+export interface InputActionDoc {
+  name: string
+  /** KeyboardEvent.code values, 'Mouse0'-'Mouse2' or 'GamepadA' etc. */
+  keys: string[]
+}
+
+export interface InputAxisDoc {
+  name: string
+  negative: string[]
+  positive: string[]
+  /** Gamepad stick axis: 0 left X, 1 left Y, 2 right X, 3 right Y; -1 = none. */
+  gamepadAxis: number
+  invert: boolean
+}
+
+/** Bindings every game starts with; the built-in scripts use these names. */
+export function defaultInputActions(): InputActionDoc[] {
+  return [
+    { name: 'Jump', keys: ['Space', 'GamepadA'] },
+    { name: 'Sprint', keys: ['ShiftLeft', 'ShiftRight', 'GamepadRB'] },
+    { name: 'Fire', keys: ['KeyE', 'GamepadX'] },
+    { name: 'Interact', keys: ['KeyF', 'GamepadY'] },
+  ]
+}
+
+export function defaultInputAxes(): InputAxisDoc[] {
+  return [
+    { name: 'MoveX', negative: ['KeyA', 'ArrowLeft'], positive: ['KeyD', 'ArrowRight'], gamepadAxis: 0, invert: false },
+    { name: 'MoveY', negative: ['KeyS', 'ArrowDown'], positive: ['KeyW', 'ArrowUp'], gamepadAxis: 1, invert: true },
+    { name: 'LookX', negative: [], positive: [], gamepadAxis: 2, invert: false },
+    { name: 'LookY', negative: [], positive: [], gamepadAxis: 3, invert: false },
+  ]
 }
 
 export const LAYER_COUNT = 16
@@ -312,6 +350,8 @@ export function defaultProjectSettings(): ProjectSettings {
   return {
     layerNames: ['Default', 'Player', 'Enemy', 'Projectile', 'Pickup', ...Array.from({ length: LAYER_COUNT - 5 }, (_, i) => `Layer ${i + 5}`)],
     layerCollisions: Array.from({ length: LAYER_COUNT }, () => 0xffff),
+    inputActions: defaultInputActions(),
+    inputAxes: defaultInputAxes(),
   }
 }
 

@@ -890,3 +890,48 @@ body.resizing canvas {
   padding-top: 4px;
   margin-top: 4px;
 }
+.dialog-subhead {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.binding-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.binding-table th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 2px 4px;
+}
+.binding-table td {
+  padding: 2px 4px;
+}
+.binding-table td.wide {
+  width: 70%;
+}
+.binding-table input[type='text'],
+.binding-table input:not([type]),
+.binding-table select {
+  width: 100%;
+}
+.keys-field {
+  display: flex;
+  gap: 4px;
+}
+.keys-field input {
+  flex: 1;
+  min-width: 0;
+}
+.record-key {
+  white-space: nowrap;
+}
+.record-key.active {
+  background: var(--accent);
+  color: white;
+}
