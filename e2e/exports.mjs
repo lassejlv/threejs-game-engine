@@ -9,7 +9,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { assert, BROWSER, budgets, collectErrors, countColors, failureShot, launch, logger, serveDir, startDevServer } from './harness.mjs'
+import { assert, BROWSER, budgets, collectErrors, countColors, describeGpu, failureShot, launch, logger, serveDir, startDevServer } from './harness.mjs'
 
 const log = logger('exports')
 const PORT = Number(process.env.E2E_EXPORT_PORT ?? 5209)
@@ -104,6 +104,7 @@ async function main() {
     const editor = await context.newPage()
     const editorErrors = collectErrors(editor)
     await editor.goto(dev.url)
+    log(await describeGpu(editor))
     await editor.locator('.save-status', { hasText: /Saved/ }).waitFor({ timeout: 60_000 })
 
     for (const game of GAMES) {

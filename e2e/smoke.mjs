@@ -8,7 +8,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { assert, budgets, collectErrors, countColors, failureShot, launch, logger, startDevServer } from './harness.mjs'
+import { assert, budgets, collectErrors, countColors, describeGpu, failureShot, launch, logger, startDevServer } from './harness.mjs'
 
 const log = logger('smoke')
 const PORT = Number(process.env.E2E_PORT ?? 5199)
@@ -26,9 +26,11 @@ async function main() {
 
     browser = await launch()
     page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage()
-    // three logs a lost context with console.error in some browsers; the test causes that on purpose.
-    const errors = collectErrors(page, [/Context Lost/i])
+    // The test loses the context on purpose: three may log that, and WebKit complains when objects made
+    // before the loss are disposed afterwards (their GL handles belong to the old context). Both are harmless.
+    const errors = collectErrors(page, [/Context Lost/i, /does not belong to this context/])
     await page.goto(dev.url, { waitUntil: 'load' })
+    log(await describeGpu(page))
 
     // The editor renders into a canvas with a real size.
     const canvas = page.locator('canvas').first()
@@ -49,6 +51,7 @@ async function main() {
     await page.waitForTimeout(1000)
     const colors = await countColors(page, canvas)
     log(`canvas shows ${colors} distinct colors`)
+    if (colors <= 8) log(`errors so far:\n  ${errors.join('\n  ') || '(none)'}`)
     assert(colors > 8, `canvas renders a scene, not a flat color (${colors} colors)`)
 
     // Play (the keyboard goes to the focused element, which is the page body here).

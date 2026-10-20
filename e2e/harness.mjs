@@ -118,6 +118,16 @@ export async function serveDir(dir) {
   return { url: `http://127.0.0.1:${server.address().port}/`, close: () => server.close() }
 }
 
+/** What the browser offers for 3D, for the log (and for diagnosing a blank canvas). */
+export async function describeGpu(page) {
+  return page.evaluate(() => {
+    const gl = document.createElement('canvas').getContext('webgl2')
+    if (!gl) return 'no WebGL 2'
+    const info = gl.getExtension('WEBGL_debug_renderer_info')
+    return `WebGL 2: ${info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)}`
+  })
+}
+
 /** Saves a screenshot for debugging a failure. */
 export async function failureShot(page, name) {
   const shot = process.env.E2E_SCREENSHOT_DIR ? join(process.env.E2E_SCREENSHOT_DIR, `${name}-${BROWSER}.png`) : `test-results/${name}-${BROWSER}.png`
