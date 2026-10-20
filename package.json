@@ -11,7 +11,8 @@
     "build:player": "vite build --config vite.player.config.ts --logLevel warn",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "node e2e/smoke.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
@@ -25,6 +26,8 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^29.1.1",
+    "playwright": "1.56.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
