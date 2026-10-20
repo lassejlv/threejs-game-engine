@@ -1,0 +1,168 @@
+:root {
+  --bg-0: #15181d;
+  --bg-1: #1c2027;
+  --bg-2: #242932;
+  --bg-3: #2e3440;
+  --border: #323946;
+  --text: #dfe4ec;
+  --text-dim: #8a93a3;
+  --accent: #4c8dff;
+  --accent-soft: rgba(76, 141, 255, 0.18);
+  --play: #ff9d3a;
+  --danger: #ff6b6b;
+  --warn: #ffc857;
+  --ui-bg: rgba(16, 19, 24, 0.78);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 12px/1.4 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button,
+select {
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+button:hover:not(:disabled),
+select:hover:not(:disabled) {
+  border-color: #47505f;
+  background: #363d4a;
+}
+button:disabled,
+select:disabled,
+input:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* In-game HUD cards (shared by play mode) */
+.hud-card {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 12px;
+  min-width: 88px;
+  background: var(--ui-bg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+}
+.hud-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.hud-value {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.hud-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 20px 32px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffd25a;
+  background: var(--ui-bg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  white-space: nowrap;
+}
+
+/* Debug overlay */
+.ge-debug-chip {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  font: 600 11px var(--mono);
+  background: var(--ui-bg);
+  font-variant-numeric: tabular-nums;
+}
+.ge-debug {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 250px;
+  max-height: calc(100% - 20px);
+  overflow: auto;
+  padding: 8px 10px;
+  font: 11px/1.5 var(--mono);
+  background: var(--ui-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+}
+.ge-debug header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.ge-debug header button {
+  padding: 0 7px;
+}
+.ge-debug dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  margin: 0 0 8px;
+}
+.ge-debug dt {
+  color: var(--text-dim);
+}
+.ge-debug dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ge-debug-controls {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ge-debug table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ge-debug td:last-child {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ge-dim {
+  color: var(--text-dim);
+  padding: 0 6px;
+}
