@@ -17,6 +17,7 @@ import {
   undo,
   updateProject,
 } from '../editor'
+import { downloadGame, runGameInTab } from '../exportGame'
 import { PRESETS } from '../presets'
 import { sceneView } from '../runtime/editScene'
 import { TextInput } from './fields'
@@ -133,6 +134,14 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
       </div>
 
       <div className="toolbar-group toolbar-right">
+        <Menu
+          align="right"
+          label={<><Icon name="build" /> Build</>}
+          items={[
+            { label: 'Run in new tab', onSelect: () => void runGameInTab() },
+            { label: 'Download game (.html)', onSelect: () => void downloadGame() },
+          ]}
+        />
         <span className="fps">{fps} fps</span>
       </div>
     </header>

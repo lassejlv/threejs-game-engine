@@ -14,6 +14,9 @@ const MAX_ENTRIES = 300
 
 export const consoleStore = createStore({ entries: [] as LogEntry[] })
 
+/** Extra sinks for log lines (the exported player forwards them to the browser console). */
+export const logListeners = new Set<(level: LogLevel, message: string) => void>()
+
 let nextId = 0
 let pending: LogEntry[] = []
 let timer: ReturnType<typeof setTimeout> | null = null
@@ -21,6 +24,7 @@ let timer: ReturnType<typeof setTimeout> | null = null
 /** Batched so a script logging every frame doesn't re-render the console 60x/second. */
 export function log(level: LogLevel, ...args: unknown[]): void {
   const message = args.map(format).join(' ')
+  for (const listener of logListeners) listener(level, message)
   const last = pending.at(-1) ?? consoleStore.get().entries.at(-1)
   if (last && last.level === level && last.message === message) {
     if (pending.at(-1) === last) last.count++

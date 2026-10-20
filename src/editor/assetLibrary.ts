@@ -81,6 +81,10 @@ export class AssetLibrary {
     return null
   }
 
+  blob(id: string): Blob | null {
+    return this.blobs.get(id) ?? null
+  }
+
   /** Object URL for an asset, or null if it no longer exists. */
   url(id: string): string | null {
     let url = this.urls.get(id)
