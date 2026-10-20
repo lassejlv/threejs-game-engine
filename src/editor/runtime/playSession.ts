@@ -218,6 +218,23 @@ export class PlaySession {
         return hit && target ? { handle: target, point: hit.point, normal: hit.normal, distance: hit.distance } : null
       },
       applyImpulse: (target, impulse) => this.rapier.applyImpulse(target.entity, impulse),
+      addForce: (target, force) => this.rapier.addForce(target.entity, force),
+      addTorque: (target, torque) => this.rapier.addTorque(target.entity, torque),
+      applyTorqueImpulse: (target, impulse) => this.rapier.applyTorqueImpulse(target.entity, impulse),
+      angularVelocity: (target) => this.rapier.angularVelocity(target.entity),
+      setAngularVelocity: (target, velocity) => this.rapier.setAngularVelocity(target.entity, velocity),
+      overlap: (center, size, options = {}) =>
+        this.rapier
+          .overlap(center, size, { exclude: options.ignoreSelf === false ? undefined : handle.entity, triggers: options.triggers })
+          .flatMap((entity) => this.handles.get(entity) ?? []),
+      sphereCast: (origin, radius, direction, maxDistance, options = {}) => {
+        const hit = this.rapier.sphereCast(origin, radius, direction, maxDistance, {
+          exclude: options.ignoreSelf === false ? undefined : handle.entity,
+          triggers: options.triggers,
+        })
+        const target = hit && this.handles.get(hit.entity)
+        return hit && target ? { handle: target, point: hit.point, normal: hit.normal, distance: hit.distance } : null
+      },
     }
     return {
       ...handle,

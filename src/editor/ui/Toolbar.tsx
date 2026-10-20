@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { createStore, type Engine } from '../../engine'
 import { useStore } from '../../react'
 import { createEntity } from '../document'
@@ -23,6 +23,7 @@ import { sceneView } from '../runtime/editScene'
 import { TextInput } from './fields'
 import { Icon, type IconName } from './icons'
 import { Menu, type MenuItem } from './Menu'
+import { ProjectSettingsDialog } from './ProjectSettings'
 
 export function createMenuItems(parent: string | null = null): MenuItem[] {
   return PRESETS.map((preset) => ({
@@ -54,6 +55,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
   const canRedo = useStore(editorStore, (s) => s.canRedo)
   const fps = useStore(engine?.stats ?? fallbackStats, (s) => s.fps)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const playing = mode === 'play'
 
   return (
@@ -68,6 +70,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
             { label: 'New from sample (Coin Rush)', onSelect: () => confirmDiscard() && newProject(false) },
             { label: 'Open project…', onSelect: () => fileInput.current?.click() },
             { label: 'Export project', onSelect: exportProject },
+            { label: 'Project settings…', onSelect: () => setSettingsOpen(true) },
           ]}
         />
         <input
@@ -144,6 +147,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
         />
         <span className="fps">{fps} fps</span>
       </div>
+      {settingsOpen && <ProjectSettingsDialog onClose={() => setSettingsOpen(false)} />}
     </header>
   )
 }

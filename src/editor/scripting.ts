@@ -38,6 +38,25 @@ export interface PhysicsApi {
   ): PhysicsHit | null
   /** Instant velocity change scaled by mass (dynamic bodies only). */
   applyImpulse(target: Handle, impulse: THREE.Vector3): void
+  /** Pushes a dynamic body for this step; call it every fixedUpdate for a steady push. */
+  addForce(target: Handle, force: THREE.Vector3): void
+  /** Spins a dynamic body for this step; call it every fixedUpdate. */
+  addTorque(target: Handle, torque: THREE.Vector3): void
+  /** Instant spin change scaled by inertia. */
+  applyTorqueImpulse(target: Handle, impulse: THREE.Vector3): void
+  /** Radians per second around each world axis. */
+  angularVelocity(target: Handle): THREE.Vector3
+  setAngularVelocity(target: Handle, velocity: THREE.Vector3): void
+  /** Entities touching a sphere (radius) or box (half extents) at a point. Ignores the caller and triggers by default. */
+  overlap(center: THREE.Vector3, size: number | THREE.Vector3, options?: { triggers?: boolean; ignoreSelf?: boolean }): Handle[]
+  /** Sweeps a sphere along a direction: like a raycast with thickness. */
+  sphereCast(
+    origin: THREE.Vector3,
+    radius: number,
+    direction: THREE.Vector3,
+    maxDistance?: number,
+    options?: { triggers?: boolean; ignoreSelf?: boolean },
+  ): PhysicsHit | null
 }
 
 export interface SoundApi {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../../react'
 import type { AssetKind } from '../assetLibrary'
 import {
@@ -8,6 +8,7 @@ import {
   defaultCollider,
   type EntityDoc,
   type ParamValue,
+  type JointDoc,
   type ParticlesDoc,
   prefabRoot,
   type ProjectDoc,
@@ -461,13 +462,28 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
           <SelectField
             label="Shape"
             value={entity.collider.shape}
-            options={[['box', 'Box'], ['sphere', 'Sphere'], ['capsule', 'Capsule'], ['cylinder', 'Cylinder']]}
+            options={[
+              ['box', 'Box'], ['sphere', 'Sphere'], ['capsule', 'Capsule'], ['cylinder', 'Cylinder'],
+              ['mesh', 'Mesh (exact)'], ['convex', 'Convex hull'],
+            ]}
             onChange={(shape) => setComponent('collider', { shape }, 'shape')}
+          />
+          {(entity.collider.shape === 'mesh' || entity.collider.shape === 'convex') && (
+            <p className="hint">
+              Built from this entity's Mesh Renderer or Model.
+              {entity.collider.shape === 'mesh' && ' Exact surface for static and kinematic objects; dynamic bodies use the convex hull.'}
+            </p>
+          )}
+          <SelectField
+            label="Layer"
+            value={String(entity.collider.layer)}
+            options={doc.settings.layerNames.map((name, i) => [String(i), name] as const)}
+            onChange={(layer) => setComponent('collider', { layer: Number(layer) }, 'layer')}
           />
           {entity.collider.shape === 'box' && (
             <Vec3Field label="Size" value={entity.collider.size} step={0.05} onChange={(size) => setComponent('collider', { size }, 'size')} />
           )}
-          {entity.collider.shape !== 'box' && (
+          {entity.collider.shape !== 'box' && entity.collider.shape !== 'mesh' && entity.collider.shape !== 'convex' && (
             <NumberField label="Radius" value={entity.collider.radius} step={0.05} min={0} onChange={(radius) => setComponent('collider', { radius }, 'radius')} />
           )}
           {(entity.collider.shape === 'capsule' || entity.collider.shape === 'cylinder') && (
@@ -478,6 +494,10 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
           <CheckField label="Is trigger" value={entity.collider.trigger} onChange={(trigger) => setComponent('collider', { trigger }, 'trig')} />
           <p className="hint">Sizes are multiplied by the transform scale.</p>
         </Section>
+      )}
+
+      {entity.joint && (
+        <JointSection entity={entity} set={(patch, field) => setComponent('joint', patch, field)} onRemove={() => removeComponent('joint')} />
       )}
 
       {entity.scripts.map((ref, index) => (
@@ -517,6 +537,77 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
         </select>
       </div>
     </>
+  )
+}
+
+function JointSection({
+  entity,
+  set,
+  onRemove,
+}: {
+  entity: EntityDoc
+  set: (patch: Partial<JointDoc>, field: string) => void
+  onRemove: () => void
+}) {
+  const j = entity.joint!
+  const doc = useStore(editorStore, (s) => s.doc)
+  const editing = useStore(editorStore, (s) => s.editing)
+  const bodies = useMemo(
+    () => targetEntities(doc, editing).filter((e) => e.rigidBody && e.id !== entity.id),
+    [doc, editing, entity.id],
+  )
+  const unit = j.type === 'hinge' ? '°' : 'm'
+  return (
+    <Section title={COMPONENT_LABELS.joint} icon={<Icon name="joint" />} onRemove={onRemove}>
+      <SelectField
+        label="Type"
+        value={j.type}
+        options={[['hinge', 'Hinge'], ['ball', 'Ball'], ['fixed', 'Fixed'], ['slider', 'Slider'], ['spring', 'Spring']]}
+        onChange={(type) => set({ type }, 'type')}
+      />
+      <SelectField
+        label="Connected to"
+        value={j.target ?? ''}
+        options={[['', 'The world'], ...bodies.map((e) => [e.id, e.name] as const), ...(j.target && !bodies.some((e) => e.id === j.target) ? [[j.target, 'Missing body'] as const] : [])]}
+        onChange={(target) => set({ target: target || null }, 'target')}
+      />
+      <Vec3Field label="Anchor" value={j.anchor} step={0.05} onChange={(anchor) => set({ anchor }, 'anchor')} />
+      {(j.type === 'hinge' || j.type === 'slider') && (
+        <>
+          <Vec3Field label="Axis" value={j.axis} step={0.1} onChange={(axis) => set({ axis }, 'axis')} />
+          <CheckField label="Limits" value={j.limits} onChange={(limits) => set({ limits }, 'limits')} />
+          {j.limits && (
+            <>
+              <NumberField label={`Min (${unit})`} value={j.min} step={j.type === 'hinge' ? 5 : 0.1} onChange={(min) => set({ min }, 'min')} />
+              <NumberField label={`Max (${unit})`} value={j.max} step={j.type === 'hinge' ? 5 : 0.1} onChange={(max) => set({ max }, 'max')} />
+            </>
+          )}
+          <NumberField label={`Motor speed (${unit}/s)`} value={j.motorSpeed} step={j.type === 'hinge' ? 10 : 0.1} onChange={(motorSpeed) => set({ motorSpeed }, 'ms')} />
+          <NumberField label="Motor strength" value={j.motorStrength} step={1} min={0} onChange={(motorStrength) => set({ motorStrength }, 'mf')} />
+        </>
+      )}
+      {j.type === 'spring' && (
+        <>
+          <NumberField label="Rest length (-1 = start)" value={j.restLength} step={0.1} min={-1} onChange={(restLength) => set({ restLength }, 'rest')} />
+          <NumberField label="Stiffness" value={j.stiffness} step={1} min={0} onChange={(stiffness) => set({ stiffness }, 'stiff')} />
+          <NumberField label="Damping" value={j.damping} step={0.1} min={0} onChange={(damping) => set({ damping }, 'damp')} />
+        </>
+      )}
+      <p className="hint">
+        {!entity.rigidBody
+          ? 'Needs a Rigid Body on this entity.'
+          : j.type === 'hinge'
+            ? 'Rotates around the axis through the anchor (doors, wheels, pendulums).'
+            : j.type === 'slider'
+              ? 'Moves along the axis only (elevators, pistons).'
+              : j.type === 'ball'
+                ? 'Swings freely around the anchor (chains, ragdoll joints).'
+                : j.type === 'spring'
+                  ? 'Pulled toward the connected body, or back to its start when connected to the world.'
+                  : 'Holds the two bodies together rigidly.'}{' '}
+        The anchor is relative to this entity.
+      </p>
+    </Section>
   )
 }
 

@@ -172,7 +172,8 @@ export interface ParticlesDoc {
   destroyWhenDone: boolean
 }
 
-export type ColliderShapeDoc = 'box' | 'sphere' | 'capsule' | 'cylinder'
+/** mesh: the exact surface of the entity's mesh or model (static/kinematic). convex: its convex hull (any body). */
+export type ColliderShapeDoc = 'box' | 'sphere' | 'capsule' | 'cylinder' | 'mesh' | 'convex'
 
 export interface ColliderDoc {
   shape: ColliderShapeDoc
@@ -185,6 +186,32 @@ export interface ColliderDoc {
   center: Vec3
   trigger: boolean
   friction: number
+  /** Physics layer index (0-15); which layers collide is set in Project Settings. */
+  layer: number
+}
+
+export type JointTypeDoc = 'fixed' | 'hinge' | 'ball' | 'slider' | 'spring'
+
+export interface JointDoc {
+  type: JointTypeDoc
+  /** Id of the entity whose rigid body this connects to; null = a fixed point in the world. */
+  target: string | null
+  /** Joint point relative to this entity (local units, before scale). */
+  anchor: Vec3
+  /** Hinge/slider axis in this entity's local space. */
+  axis: Vec3
+  limits: boolean
+  /** Hinge: degrees. Slider: meters. */
+  min: number
+  max: number
+  /** Spring: rest length in meters; -1 = the distance at start. */
+  restLength: number
+  stiffness: number
+  damping: number
+  /** Hinge (degrees/s) or slider (m/s) motor speed. */
+  motorSpeed: number
+  /** 0 = no motor. */
+  motorStrength: number
 }
 
 export interface ScriptRefDoc {
@@ -207,6 +234,7 @@ export interface EntityDoc {
   particles?: ParticlesDoc
   rigidBody?: RigidBodyDoc
   collider?: ColliderDoc
+  joint?: JointDoc
   /**
    * On a prefab instance these are parameter overrides: entries whose script
    * matches one on the prefab root replace that script's params.
@@ -271,16 +299,33 @@ export interface PrefabDoc {
   entities: EntityDoc[]
 }
 
+export interface ProjectSettings {
+  /** Names of the 16 physics layers. */
+  layerNames: string[]
+  /** Per layer: bit mask of the layers it collides with (kept symmetric). */
+  layerCollisions: number[]
+}
+
+export const LAYER_COUNT = 16
+
+export function defaultProjectSettings(): ProjectSettings {
+  return {
+    layerNames: ['Default', 'Player', 'Enemy', 'Projectile', 'Pickup', ...Array.from({ length: LAYER_COUNT - 5 }, (_, i) => `Layer ${i + 5}`)],
+    layerCollisions: Array.from({ length: LAYER_COUNT }, () => 0xffff),
+  }
+}
+
 export interface ProjectDoc {
   version: 2
   name: string
+  settings: ProjectSettings
   /** The first scene is where an exported game starts. */
   scenes: SceneDoc[]
   prefabs: PrefabDoc[]
   scripts: ScriptDoc[]
 }
 
-export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'audio' | 'particles' | 'rigidBody' | 'collider'
+export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'audio' | 'particles' | 'rigidBody' | 'collider' | 'joint'
 
 export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   mesh: 'Mesh Renderer',
@@ -291,6 +336,7 @@ export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   particles: 'Particle Emitter',
   rigidBody: 'Rigid Body',
   collider: 'Collider',
+  joint: 'Joint',
 }
 
 export const PRIMITIVE_COLLIDER: Record<Primitive, Pick<ColliderDoc, 'shape' | 'size' | 'radius' | 'height'>> = {
@@ -395,6 +441,21 @@ export const componentDefaults = {
     center: [0, 0, 0],
     trigger: false,
     friction: 0.5,
+    layer: 0,
+  }),
+  joint: (): JointDoc => ({
+    type: 'hinge',
+    target: null,
+    anchor: [0, 0, 0],
+    axis: [0, 1, 0],
+    limits: false,
+    min: -90,
+    max: 90,
+    restLength: -1,
+    stiffness: 50,
+    damping: 2,
+    motorSpeed: 0,
+    motorStrength: 0,
   }),
 } satisfies { [K in ComponentKey]: () => NonNullable<EntityDoc[K]> }
 
@@ -466,7 +527,7 @@ export function createScene(name: string): SceneDoc {
 }
 
 export function emptyProject(): ProjectDoc {
-  return { version: 2, name: 'Untitled', scenes: [createScene('Main')], prefabs: [], scripts: [] }
+  return { version: 2, name: 'Untitled', settings: defaultProjectSettings(), scenes: [createScene('Main')], prefabs: [], scripts: [] }
 }
 
 export function prefabRoot(prefab: PrefabDoc): EntityDoc | undefined {
@@ -501,8 +562,12 @@ function expandInstance(instance: EntityDoc, prefabs: PrefabDoc[], depth: number
   const root = prefab && prefabRoot(prefab)
   if (!prefab || !root || depth >= MAX_PREFAB_DEPTH) return [{ ...instance, prefab: undefined }]
   const inner = expandEntities(prefab.entities, prefabs, depth + 1)
+  const innerIds = new Set(inner.map((e) => e.id))
   const mapId = (id: string) => (id === root.id ? instance.id : `${instance.id}/${id}`)
-  return inner.map((e) =>
+  // Joints between entities of the same prefab must point at this instance's copies.
+  const remapJoint = (e: EntityDoc): EntityDoc =>
+    e.joint?.target && innerIds.has(e.joint.target) ? { ...e, joint: { ...e.joint, target: mapId(e.joint.target) } } : e
+  return inner.map(remapJoint).map((e) =>
     e.id === root.id
       ? {
           ...e,
@@ -578,12 +643,17 @@ export function cloneSubtree(entities: EntityDoc[], id: string, suffix = ' (copy
   for (const old of ids) remap.set(old, newId())
   return entities
     .filter((e) => ids.has(e.id))
-    .map((e) => ({
-      ...structuredClone(e),
-      id: remap.get(e.id)!,
-      parent: e.id === id ? e.parent : remap.get(e.parent!)!,
-      name: e.id === id ? `${e.name}${suffix}` : e.name,
-    }))
+    .map((e) => {
+      const copy: EntityDoc = {
+        ...structuredClone(e),
+        id: remap.get(e.id)!,
+        parent: e.id === id ? e.parent : remap.get(e.parent!)!,
+        name: e.id === id ? `${e.name}${suffix}` : e.name,
+      }
+      // A joint to another entity in the copied subtree connects to that entity's copy.
+      if (copy.joint?.target && remap.has(copy.joint.target)) copy.joint.target = remap.get(copy.joint.target)!
+      return copy
+    })
 }
 
 /** Reads a saved project, upgrading older versions. */
@@ -601,9 +671,11 @@ export function parseProject(json: unknown): ProjectDoc {
   }
   if (raw.version !== 2 || !Array.isArray(raw.scenes) || raw.scenes.length === 0) throw new Error('Not a project file')
   const doc = raw as unknown as ProjectDoc
+  const defaults = defaultProjectSettings()
   return {
     version: 2,
     name: doc.name ?? 'Untitled',
+    settings: { ...defaults, ...doc.settings },
     scenes: doc.scenes.map((scene) => ({
       id: scene.id ?? newId(),
       name: scene.name ?? 'Scene',
@@ -625,6 +697,7 @@ function migrateEntity(raw: EntityDoc): EntityDoc {
   }
   if (e.mesh) e.mesh = { ...componentDefaults.mesh(), ...e.mesh }
   if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
+  if (e.joint) e.joint = { ...componentDefaults.joint(), ...e.joint }
   if (e.audio) e.audio = { ...componentDefaults.audio(), ...e.audio }
   if (e.model) e.model = { ...componentDefaults.model(), ...e.model }
   if (e.particles) e.particles = { ...componentDefaults.particles(), ...e.particles }

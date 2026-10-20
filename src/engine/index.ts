@@ -24,17 +24,21 @@ export {
   boxCollider,
   capsuleCollider,
   Collider,
+  convexCollider,
   cylinderCollider,
+  Joint,
+  joint,
+  meshCollider,
   RigidBody,
   rigidBody,
   sphereCollider,
   teleport,
   Transform,
 } from './components'
-export type { ColliderData, ColliderShape, RigidBodyData } from './components'
+export type { ColliderData, ColliderShape, JointData, JointType, RigidBodyData } from './components'
 export { createCollisionSystem, createInterpolationSystem, createPhysicsSystem } from './physics/systems'
 export { loadRapier, RapierPhysics } from './physics/rapier'
-export type { RaycastHit, RaycastOptions } from './physics/rapier'
+export type { DebugLines, RaycastHit, RaycastOptions, ShapeHit } from './physics/rapier'
 
 export { damp, dampAngle, moveTowards, mulberry32 } from './utils/math'
 export { disposeObject } from './utils/dispose'

@@ -6,10 +6,12 @@ import {
   Group,
   LineBasicMaterial,
   LineSegments,
-  type Object3D,
+  type Mesh,
+  Object3D,
   Vector3,
 } from 'three'
 import type { ColliderDoc, EntityDoc } from '../document'
+import { visualGeometry } from './visualGeometry'
 
 const material = new LineBasicMaterial({ color: 0x5cff8a, depthTest: false, transparent: true, opacity: 0.85, fog: false })
 const triggerMaterial = new LineBasicMaterial({ color: 0x5cc8ff, depthTest: false, transparent: true, opacity: 0.85, fog: false })
@@ -68,11 +70,29 @@ function roundShape(c: ColliderDoc): BufferGeometry {
 
 const sphereGeometry = new BufferGeometry().setAttribute('position', new Float32BufferAttribute(circles(), 3))
 const scale = new Vector3()
+const line0 = new Object3D()
+
+function meshCount(node: Object3D): number {
+  let n = 0
+  ;(node.userData.visual as Object3D | undefined)?.traverse((o) => {
+    if ((o as Mesh).isMesh) n++
+  })
+  return n
+}
+
+/** Feature edges of the entity's visual (creases over 20°), so dense models stay readable. */
+function meshEdges(node: Object3D, worldScale: Vector3): BufferGeometry {
+  const { vertices, indices } = visualGeometry(node, worldScale)
+  const surface = new BufferGeometry().setAttribute('position', new Float32BufferAttribute(vertices, 3)).setIndex([...indices])
+  const edges = new EdgesGeometry(surface, 20)
+  surface.dispose()
+  return edges
+}
 
 /** Draws collider shapes on top of the scene (edit mode). Rebuilds only when collider data changes. */
 export class ColliderOutlines {
   readonly group = new Group()
-  private readonly lines = new Map<string, { collider: ColliderDoc; line: LineSegments }>()
+  private readonly lines = new Map<string, { collider: ColliderDoc; line: LineSegments; key: string }>()
 
   update(entities: EntityDoc[], nodes: Map<string, Object3D>): void {
     const wanted = new Set<string>()
@@ -82,14 +102,25 @@ export class ColliderOutlines {
       if (!node) continue
       wanted.add(entity.id)
       let entry = this.lines.get(entity.id)
-      if (!entry || entry.collider !== c) {
+      const fromVisual = c.shape === 'mesh' || c.shape === 'convex'
+      // Mesh shapes follow the visual, which may still be loading or change scale.
+      node.updateWorldMatrix(true, false)
+      node.matrixWorld.decompose(line0.position, line0.quaternion, scale)
+      const key = fromVisual ? `${meshCount(node)}:${scale.toArray().join(',')}` : ''
+      if (!entry || entry.collider !== c || entry.key !== key) {
         if (entry) this.drop(entity.id)
-        const geometry = c.shape === 'box' ? boxEdges : c.shape === 'sphere' ? sphereGeometry : roundShape(c)
+        const geometry = fromVisual
+          ? meshEdges(node, scale)
+          : c.shape === 'box'
+            ? boxEdges
+            : c.shape === 'sphere'
+              ? sphereGeometry
+              : roundShape(c)
         const line = new LineSegments(geometry, c.trigger ? triggerMaterial : material)
         line.renderOrder = 999
         line.userData.editorOnly = true
         this.group.add(line)
-        entry = { collider: c, line }
+        entry = { collider: c, line, key }
         this.lines.set(entity.id, entry)
       }
       // Match the entity's world transform, baking shape size like play mode does.
@@ -98,7 +129,8 @@ export class ColliderOutlines {
       node.matrixWorld.decompose(line.position, line.quaternion, scale)
       const offset = new Vector3(...c.center).multiply(scale).applyQuaternion(line.quaternion)
       line.position.add(offset)
-      if (c.shape === 'box') line.scale.set(c.size[0] * scale.x, c.size[1] * scale.y, c.size[2] * scale.z)
+      if (fromVisual) line.scale.setScalar(1) // vertices already carry the scale
+      else if (c.shape === 'box') line.scale.set(c.size[0] * scale.x, c.size[1] * scale.y, c.size[2] * scale.z)
       else if (c.shape === 'sphere') line.scale.setScalar(c.radius * Math.max(scale.x, scale.y, scale.z))
       else {
         const radial = Math.max(scale.x, scale.z)

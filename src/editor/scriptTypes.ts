@@ -76,6 +76,18 @@ declare module 'engine' {
   interface Physics {
     raycast(origin: T3.Vector3, direction: T3.Vector3, maxDistance?: number, options?: { triggers?: boolean; ignoreSelf?: boolean }): PhysicsHit | null
     applyImpulse(target: Handle, impulse: T3.Vector3): void
+    /** Pushes a dynamic body for this step; call it every fixedUpdate for a steady push. */
+    addForce(target: Handle, force: T3.Vector3): void
+    /** Spins a dynamic body for this step; call it every fixedUpdate. */
+    addTorque(target: Handle, torque: T3.Vector3): void
+    applyTorqueImpulse(target: Handle, impulse: T3.Vector3): void
+    /** Radians per second around each world axis. */
+    angularVelocity(target: Handle): T3.Vector3
+    setAngularVelocity(target: Handle, velocity: T3.Vector3): void
+    /** Entities touching a sphere (radius) or box (half extents) at a point. */
+    overlap(center: T3.Vector3, size: number | T3.Vector3, options?: { triggers?: boolean; ignoreSelf?: boolean }): Handle[]
+    /** A raycast with thickness. */
+    sphereCast(origin: T3.Vector3, radius: number, direction: T3.Vector3, maxDistance?: number, options?: { triggers?: boolean; ignoreSelf?: boolean }): PhysicsHit | null
   }
 
   interface Sound {

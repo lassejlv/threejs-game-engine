@@ -1,6 +1,6 @@
 import type RAPIER_NS from '@dimforge/rapier3d-compat'
 import { Quaternion, Vector3 } from 'three'
-import { Collider, type ColliderData, RigidBody, type RigidBodyData, Transform } from '../components'
+import { Collider, type ColliderData, Joint, RigidBody, type RigidBodyData, Transform } from '../components'
 import type { Engine } from '../core/Engine'
 import type { System } from '../core/System'
 import type { Entity } from '../ecs/component'
@@ -29,6 +29,19 @@ export interface RaycastHit {
   distance: number
 }
 
+export interface ShapeHit {
+  entity: Entity
+  point: Vector3
+  normal: Vector3
+  distance: number
+}
+
+/** Line segments of every collider and joint (Rapier's debug renderer), in world space. */
+export interface DebugLines {
+  vertices: Float32Array
+  colors: Float32Array
+}
+
 export interface RaycastOptions {
   /** Entity whose collider is ignored (usually the caster). */
   exclude?: Entity
@@ -51,6 +64,7 @@ const position = new Vector3()
 const quaternion = new Quaternion()
 const scale = new Vector3()
 const down = { x: 0, y: -1, z: 0 }
+const identity = { x: 0, y: 0, z: 0, w: 1 }
 
 /**
  * Rapier-backed physics using the engine's RigidBody and Collider components:
@@ -68,6 +82,12 @@ export class RapierPhysics {
   private readonly statics = new Map<Entity, { collider: RapierCollider; position: Vector3; quaternion: Quaternion }>()
   private readonly entityOf = new Map<number, Entity>()
   private readonly pending = new Set<Entity>()
+  private readonly joints = new Map<Entity, RAPIER_NS.ImpulseJoint>()
+  private readonly pendingJoints = new Set<Entity>()
+  /** Bodies with forces or torques this step; Rapier keeps forces until reset. */
+  private readonly forced = new Set<RapierBody>()
+  /** Fixed body that world-anchored joints attach to. */
+  private ground: RapierBody | null = null
   private readonly unhook: (() => void)[] = []
 
   constructor(
@@ -91,10 +111,14 @@ export class RapierPhysics {
       world.onRemove(Transform, (entity) => {
         this.remove(entity)
         this.pending.delete(entity)
+        this.removeJoint(entity)
       }),
+      world.onAdd(Joint, (entity) => this.pendingJoints.add(entity)),
+      world.onRemove(Joint, (entity) => this.removeJoint(entity)),
     )
     for (const entity of world.query(Collider).entities) this.pending.add(entity)
     for (const entity of world.query(RigidBody).entities) this.pending.add(entity)
+    for (const entity of world.query(Joint).entities) this.pendingJoints.add(entity)
   }
 
   systems(): System[] {
@@ -153,11 +177,95 @@ export class RapierPhysics {
     record.syncedVelocity.set(v.x, v.y, v.z)
   }
 
+  /** Continuous force for this step (dynamic bodies). Call every fixed step to keep pushing. */
+  addForce(entity: Entity, force: Vector3): void {
+    const body = this.dynamicBody(entity)
+    if (!body) return
+    body.addForce(force, true)
+    this.forced.add(body)
+  }
+
+  /** Continuous torque for this step (dynamic bodies). */
+  addTorque(entity: Entity, torque: Vector3): void {
+    const body = this.dynamicBody(entity)
+    if (!body) return
+    body.addTorque(torque, true)
+    this.forced.add(body)
+  }
+
+  /** Instant spin change scaled by inertia. */
+  applyTorqueImpulse(entity: Entity, impulse: Vector3): void {
+    this.dynamicBody(entity)?.applyTorqueImpulse(impulse, true)
+  }
+
+  angularVelocity(entity: Entity): Vector3 {
+    const v = this.bodies.get(entity)?.body.angvel()
+    return v ? new Vector3(v.x, v.y, v.z) : new Vector3()
+  }
+
+  setAngularVelocity(entity: Entity, velocity: Vector3): void {
+    this.dynamicBody(entity)?.setAngvel(velocity, true)
+  }
+
+  /** Entities whose colliders overlap a sphere or box (`halfExtents`) at `center`. */
+  overlap(center: Vector3, size: number | Vector3, { exclude, triggers = false }: RaycastOptions = {}): Entity[] {
+    const { R } = this
+    const shape = typeof size === 'number' ? new R.Ball(size) : new R.Cuboid(size.x, size.y, size.z)
+    const found = new Set<Entity>()
+    this.world.intersectionsWithShape(
+      center,
+      identity,
+      shape,
+      (collider) => {
+        const entity = this.entityOf.get(collider.handle)
+        if (entity !== undefined) found.add(entity)
+        return true
+      },
+      triggers ? undefined : R.QueryFilterFlags.EXCLUDE_SENSORS,
+      undefined,
+      exclude === undefined ? undefined : (this.colliderOf(exclude) ?? undefined),
+    )
+    return [...found]
+  }
+
+  /** Sweeps a sphere along a direction and returns the first collider it touches. */
+  sphereCast(origin: Vector3, radius: number, direction: Vector3, maxDistance = 100, { exclude, triggers = false }: RaycastOptions = {}): ShapeHit | null {
+    const { R } = this
+    const dir = direction.clone().normalize()
+    const hit = this.world.castShape(
+      origin,
+      identity,
+      dir,
+      new R.Ball(radius),
+      0,
+      maxDistance,
+      true,
+      triggers ? undefined : R.QueryFilterFlags.EXCLUDE_SENSORS,
+      undefined,
+      exclude === undefined ? undefined : (this.colliderOf(exclude) ?? undefined),
+    )
+    if (!hit) return null
+    const entity = this.entityOf.get(hit.collider.handle)
+    if (entity === undefined) return null
+    return {
+      entity,
+      distance: hit.time_of_impact,
+      point: new Vector3(hit.witness1.x, hit.witness1.y, hit.witness1.z),
+      normal: new Vector3(hit.normal1.x, hit.normal1.y, hit.normal1.z),
+    }
+  }
+
+  debugLines(): DebugLines {
+    const { vertices, colors } = this.world.debugRender()
+    return { vertices, colors }
+  }
+
   dispose(): void {
     for (const off of this.unhook) off()
     this.unhook.length = 0
     this.bodies.clear()
     this.statics.clear()
+    this.joints.clear()
     this.events.free()
     this.world.free()
   }
@@ -166,6 +274,8 @@ export class RapierPhysics {
     const { world: ecs, physics } = this.engine
     for (const entity of this.pending) this.create(entity)
     this.pending.clear()
+    for (const entity of this.pendingJoints) this.createJoint(entity)
+    this.pendingJoints.clear()
 
     const g = physics.gravity
     this.world.gravity = { x: g.x, y: g.y, z: g.z }
@@ -193,6 +303,12 @@ export class RapierPhysics {
 
     this.syncStatics()
     this.world.step(this.events)
+    for (const body of this.forced) {
+      if (!this.world.bodies.contains(body.handle)) continue
+      body.resetForces(false)
+      body.resetTorques(false)
+    }
+    this.forced.clear()
 
     // Read results back.
     for (const [entity, record] of this.bodies) {
@@ -322,6 +438,10 @@ export class RapierPhysics {
       this.entityOf.set(collider.handle, entity)
     }
 
+    // Recreating a body drops its joints; rebuild them (and joints that target it).
+    if (ecs.has(entity, Joint)) this.pendingJoints.add(entity)
+    for (const [other] of this.joints) if (ecs.tryGet(other, Joint)?.target === entity) this.pendingJoints.add(other)
+
     let controller: CharacterController | null = null
     if (data.character) {
       if (!collider) console.warn('[physics] a character body needs a collider')
@@ -345,6 +465,7 @@ export class RapierPhysics {
 
   private colliderDesc(shape: ColliderData, body: RigidBodyData | undefined): RAPIER_NS.ColliderDesc {
     const { R } = this
+    const box = () => R.ColliderDesc.cuboid(shape.halfExtents.x, shape.halfExtents.y, shape.halfExtents.z)
     const desc =
       shape.shape === 'sphere'
         ? R.ColliderDesc.ball(shape.radius)
@@ -352,7 +473,11 @@ export class RapierPhysics {
           ? R.ColliderDesc.capsule(shape.halfHeight, shape.radius)
           : shape.shape === 'cylinder'
             ? R.ColliderDesc.cylinder(shape.halfHeight, shape.radius)
-            : R.ColliderDesc.cuboid(shape.halfExtents.x, shape.halfExtents.y, shape.halfExtents.z)
+            : shape.shape === 'mesh' && shape.vertices && shape.indices
+              ? R.ColliderDesc.trimesh(shape.vertices, shape.indices)
+              : shape.shape === 'convex' && shape.vertices
+                ? (R.ColliderDesc.convexHull(shape.vertices) ?? box())
+                : box()
     desc
       .setSensor(shape.trigger)
       .setFriction(shape.friction)
@@ -363,6 +488,95 @@ export class RapierPhysics {
     if (shape.trigger || body?.character || body?.kinematic) desc.setActiveCollisionTypes(R.ActiveCollisionTypes.ALL)
     if (body && body.mass > 0) desc.setMass(body.mass)
     return desc
+  }
+
+  private dynamicBody(entity: Entity): RapierBody | null {
+    if (this.pending.has(entity)) {
+      this.pending.delete(entity)
+      this.create(entity)
+    }
+    const body = this.bodies.get(entity)?.body
+    return body && body.isDynamic() ? body : null
+  }
+
+  /**
+   * Builds the joint on `entity`. Anchors and frames are taken from the bodies'
+   * current poses, so the joint starts satisfied however the two bodies are rotated.
+   */
+  private createJoint(entity: Entity): void {
+    const { R } = this
+    const ecs = this.engine.world
+    this.removeJoint(entity)
+    const data = ecs.tryGet(entity, Joint)
+    const record = this.bodies.get(entity)
+    if (!data || !record) return
+    const body1 = record.body
+    const body2 = (data.target !== null && this.bodies.get(data.target)?.body) || this.groundBody(data.target)
+    const p1 = body1.translation()
+    const q1 = new Quaternion().copy(body1.rotation() as Quaternion)
+    const p2 = new Vector3().copy(body2.translation() as Vector3)
+    const q2inv = new Quaternion().copy(body2.rotation() as Quaternion).invert()
+    const world = data.anchor.clone().applyQuaternion(q1).add(p1 as Vector3)
+    const anchor2 = world.clone().sub(p2).applyQuaternion(q2inv)
+    const a1 = { x: data.anchor.x, y: data.anchor.y, z: data.anchor.z }
+    const axis = data.axis.clone().normalize()
+    let params: RAPIER_NS.JointData
+    switch (data.type) {
+      case 'hinge':
+        params = R.JointData.revolute(a1, anchor2, axis)
+        break
+      case 'slider':
+        params = R.JointData.prismatic(a1, anchor2, axis)
+        break
+      case 'ball':
+        params = R.JointData.spherical(a1, anchor2)
+        break
+      case 'spring': {
+        // To another body: pulls toward its origin, resting at the starting distance by default.
+        // To the world: pulls back toward where the anchor started.
+        const toBody = data.target !== null && this.bodies.has(data.target)
+        const end = toBody ? new Vector3() : anchor2
+        const rest = data.restLength >= 0 ? data.restLength : toBody ? world.distanceTo(p2) : 0
+        params = R.JointData.spring(rest, data.stiffness, data.damping, a1, end)
+        break
+      }
+      default:
+        params = R.JointData.fixed(a1, identity, anchor2, q2inv.clone().multiply(q1))
+    }
+    if (data.limits && (data.type === 'hinge' || data.type === 'slider')) {
+      params.limitsEnabled = true
+      params.limits = [data.limits[0], data.limits[1]]
+    }
+    const joint = this.world.createImpulseJoint(params, body1, body2, true)
+    if (data.type !== 'fixed' && data.type !== 'spring') {
+      // Express body 1's joint frame in body 2's space, so differently rotated bodies agree on the axis.
+      const frame1 = new Quaternion().copy(joint.frameX1() as Quaternion)
+      joint.setLocalFrame2(anchor2, q2inv.clone().multiply(q1).multiply(frame1))
+    }
+    if (data.motorStrength > 0 && (data.type === 'hinge' || data.type === 'slider')) {
+      ;(joint as RAPIER_NS.UnitImpulseJoint).configureMotorVelocity(data.motorSpeed, data.motorStrength)
+    }
+    joint.setContactsEnabled(false)
+    this.joints.set(entity, joint)
+  }
+
+  /** World anchor: a fixed body at the target's pose (or the origin when there is no target). */
+  private groundBody(target: Entity | null): RapierBody {
+    const object = target === null ? undefined : this.engine.world.tryGet(target, Transform)
+    if (object) {
+      object.updateWorldMatrix(true, false)
+      object.matrixWorld.decompose(position, quaternion, scale)
+      return this.world.createRigidBody(this.R.RigidBodyDesc.fixed().setTranslation(position.x, position.y, position.z).setRotation(quaternion))
+    }
+    this.ground ??= this.world.createRigidBody(this.R.RigidBodyDesc.fixed())
+    return this.ground
+  }
+
+  private removeJoint(entity: Entity): void {
+    const joint = this.joints.get(entity)
+    if (!joint) return
+    this.joints.delete(entity)
+    if (joint.isValid()) this.world.removeImpulseJoint(joint, true)
   }
 
   private colliderOf(entity: Entity): RapierCollider | null {

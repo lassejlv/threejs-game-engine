@@ -1,5 +1,5 @@
 import { type Object3D, Quaternion, Vector3 } from 'three'
-import { defineComponent } from './ecs/component'
+import { defineComponent, type Entity } from './ecs/component'
 
 /**
  * The entity's three.js object (Mesh, Group, Light, ...). Adding it puts
@@ -66,7 +66,7 @@ export function teleport(body: RigidBodyData, position: Vector3): void {
   body.previous.copy(position)
 }
 
-export type ColliderShape = 'box' | 'sphere' | 'capsule' | 'cylinder'
+export type ColliderShape = 'box' | 'sphere' | 'capsule' | 'cylinder' | 'mesh' | 'convex'
 
 export interface ColliderData {
   shape: ColliderShape
@@ -89,6 +89,10 @@ export interface ColliderData {
   layer: number
   /** Bit mask of layers this collider interacts with. */
   mask: number
+  /** Mesh and convex shapes: vertex positions (x, y, z) relative to the entity, scale applied. */
+  vertices?: Float32Array
+  /** Mesh shape: triangle indices into `vertices`. */
+  indices?: Uint32Array
 }
 
 export const Collider = defineComponent<ColliderData>('Collider')
@@ -127,6 +131,70 @@ export function sphereCollider(radius: number, options: ColliderOptions = {}): C
 /** Upright capsule. `halfHeight` is half the straight segment (total height = 2 * (halfHeight + radius)). */
 export function capsuleCollider(radius: number, halfHeight: number, options: ColliderOptions = {}): ColliderData {
   return collider('capsule', new Vector3(radius, halfHeight + radius, radius), radius, halfHeight, options)
+}
+
+/**
+ * Triangle-mesh collider (exact surface). Best for static level geometry; dynamic bodies
+ * should use `convexCollider`. Vertices are relative to the entity with its scale applied.
+ */
+export function meshCollider(vertices: Float32Array, indices: Uint32Array, options: ColliderOptions = {}): ColliderData {
+  const data = collider('mesh', boundsHalfExtents(vertices), 0, 0, options)
+  data.vertices = vertices
+  data.indices = indices
+  return data
+}
+
+/** Convex hull of the vertices: a closed, solid approximation that dynamic bodies can use. */
+export function convexCollider(vertices: Float32Array, options: ColliderOptions = {}): ColliderData {
+  const data = collider('convex', boundsHalfExtents(vertices), 0, 0, options)
+  data.vertices = vertices
+  return data
+}
+
+function boundsHalfExtents(v: Float32Array): Vector3 {
+  const h = new Vector3()
+  for (let i = 0; i < v.length; i += 3) h.set(Math.max(h.x, Math.abs(v[i])), Math.max(h.y, Math.abs(v[i + 1])), Math.max(h.z, Math.abs(v[i + 2])))
+  return h
+}
+
+export type JointType = 'fixed' | 'hinge' | 'ball' | 'slider' | 'spring'
+
+export interface JointData {
+  type: JointType
+  /** The other body; null attaches to a fixed point in the world. */
+  target: Entity | null
+  /** Joint point relative to this entity (local units, scale applied). */
+  anchor: Vector3
+  /** Hinge/slider axis in this entity's local space. */
+  axis: Vector3
+  /** Hinge (radians) or slider (meters) range; null = free. */
+  limits: [number, number] | null
+  /** Spring: rest length (meters; < 0 = the distance when created), stiffness and damping. */
+  restLength: number
+  stiffness: number
+  damping: number
+  /** Hinge/slider motor: target speed (rad/s or m/s) and strength; 0 strength = no motor. */
+  motorSpeed: number
+  motorStrength: number
+}
+
+/** Connects the entity's rigid body to another body (or the world). Rapier only. */
+export const Joint = defineComponent<JointData>('Joint')
+
+export function joint(type: JointType, target: Entity | null, options: Partial<Omit<JointData, 'type' | 'target'>> = {}): JointData {
+  return {
+    type,
+    target,
+    anchor: new Vector3(),
+    axis: new Vector3(0, 1, 0),
+    limits: null,
+    restLength: -1,
+    stiffness: 50,
+    damping: 2,
+    motorSpeed: 0,
+    motorStrength: 0,
+    ...options,
+  }
 }
 
 export function cylinderCollider(radius: number, halfHeight: number, options: ColliderOptions = {}): ColliderData {

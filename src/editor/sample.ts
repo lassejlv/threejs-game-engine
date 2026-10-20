@@ -2,6 +2,7 @@ import { mulberry32 } from '../engine'
 import {
   componentDefaults,
   createEntity,
+  defaultProjectSettings,
   defaultSettings,
   type EntityDoc,
   instantiatePrefab,
@@ -285,6 +286,43 @@ export function sampleProject(): ProjectDoc {
   const stack: Vec3[] = [[4, 0.5, 4], [5.05, 0.5, 4], [6.1, 0.5, 4], [4.5, 1.5, 4], [5.55, 1.5, 4], [5.05, 2.5, 4]]
   for (const p of stack) add(instance(crate, p, playground.id))
   add(instance(ball, [0, 4, -4], playground.id))
+  // Joints: a gate hinged on its left edge (push it open) and a pendulum on a ball joint.
+  add(
+    createEntity('Swing Gate', {
+      parent: playground.id,
+      transform: at([-5, 1.1, 3], [0, 0, 0], [2.4, 2, 0.15]),
+      mesh: mesh({ color: '#5b8fd9', roughness: 0.6 }),
+      rigidBody: { ...componentDefaults.rigidBody(), mass: 3, damping: 0.5 },
+      collider: componentDefaults.collider(),
+      joint: { ...componentDefaults.joint(), type: 'hinge', anchor: [-0.5, 0, 0], axis: [0, 1, 0], limits: true, min: -110, max: 110 },
+    }),
+  )
+  add(
+    createEntity('Gate Post', {
+      parent: playground.id,
+      transform: at([-6.3, 1.2, 3], [0, 0, 0], [0.25, 2.4, 0.25]),
+      mesh: mesh({ color: '#8e9bb0' }),
+      collider: componentDefaults.collider(),
+    }),
+  )
+  add(
+    createEntity('Pivot', {
+      parent: playground.id,
+      transform: at([-9, 5.5, -3], [0, 0, 0], [0.3, 0.3, 0.3]),
+      mesh: mesh({ color: '#8e9bb0' }),
+    }),
+  )
+  add(
+    createEntity('Pendulum', {
+      parent: playground.id,
+      transform: at([-6.5, 5.5, -3], [0, 0, 0], [0.8, 0.8, 0.8]),
+      mesh: mesh({ shape: 'sphere', color: '#e0a35b', metalness: 0.6, roughness: 0.3 }),
+      rigidBody: { ...componentDefaults.rigidBody(), mass: 4 },
+      collider: { ...componentDefaults.collider(), shape: 'sphere' },
+      // Anchor in local units (scale 0.8): 2.5 m to the left, at the pivot.
+      joint: { ...componentDefaults.joint(), type: 'ball', anchor: [-3.125, 0, 0] },
+    }),
+  )
   add(instance(portal, [-20, 1.6, -20], null, { name: 'Portal to Bonus Room' }))
 
   const coins = add(createEntity('Coins'))
@@ -354,5 +392,5 @@ export function sampleProject(): ProjectDoc {
     entities: bonus,
   }
 
-  return { version: 2, name: 'Coin Rush', scenes: [coinRush, bonusRoom], prefabs, scripts }
+  return { version: 2, name: 'Coin Rush', settings: defaultProjectSettings(), scenes: [coinRush, bonusRoom], prefabs, scripts }
 }

@@ -55,7 +55,7 @@ export interface AssetResolver {
 
 /** Shared unit-sized geometries (never disposed per entity). */
 const primitives = new Map<Primitive, BufferGeometry>()
-function primitive(shape: Primitive): BufferGeometry {
+export function primitive(shape: Primitive): BufferGeometry {
   let g = primitives.get(shape)
   if (!g) {
     g = {
@@ -378,9 +378,9 @@ export class NodeFactory {
           .catch((error: unknown) => log('error', `${entity.name}: failed to load LOD model`, error))
       }
     }
-    void Promise.all([this.engine.assets.gltf(url), import('three/addons/utils/SkeletonUtils.js')])
+    node.userData.modelReady = Promise.all([this.engine.assets.gltf(url), import('three/addons/utils/SkeletonUtils.js')])
       .then(([gltf, { clone }]) => {
-        if (!visual.parent) return // rebuilt or removed while loading
+        if (!visual.parent) return null // rebuilt or removed while loading
         const instance = this.prepareModel(clone(gltf.scene), model)
         if (lod) lod.addLevel(instance, 0)
         else visual.add(instance)
@@ -388,8 +388,12 @@ export class NodeFactory {
           modelClips.set({ [model.asset!]: gltf.animations.map((c) => c.name) })
           animator?.attach(instance, gltf.animations)
         }
+        return instance
       })
-      .catch((error: unknown) => log('error', `${entity.name}: failed to load model`, error))
+      .catch((error: unknown) => {
+        log('error', `${entity.name}: failed to load model`, error)
+        return null
+      })
   }
 
   private prepareModel(instance: Object3D, model: NonNullable<EntityDoc['model']>): Object3D {

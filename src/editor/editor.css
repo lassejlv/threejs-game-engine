@@ -805,3 +805,88 @@ body.resizing canvas {
   font-size: 11px;
   background: rgba(20, 24, 30, 0.9);
 }
+
+/* Dialogs */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+}
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(860px, 100%);
+  max-height: min(720px, 100%);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-tabs button {
+  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-dim);
+}
+.dialog-tabs button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.dialog-body {
+  overflow: auto;
+  padding: 12px 14px 16px;
+}
+.layer-matrix {
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.layer-matrix td {
+  padding: 1px 3px;
+  text-align: center;
+}
+.layer-matrix .layer-col {
+  height: 92px;
+  vertical-align: bottom;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+.layer-matrix .layer-col span {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  max-height: 88px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.layer-matrix .layer-row {
+  padding-right: 8px;
+  font-weight: 400;
+}
+.layer-matrix .layer-row input {
+  width: 120px;
+}
+.lod-level {
+  border-top: 1px dashed var(--border);
+  padding-top: 4px;
+  margin-top: 4px;
+}

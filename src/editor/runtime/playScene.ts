@@ -1,10 +1,14 @@
-import { AudioListener, type Group, type PerspectiveCamera, Vector3 } from 'three'
+import { AudioListener, BufferAttribute, BufferGeometry, type Group, LineBasicMaterial, LineSegments, type PerspectiveCamera, Vector3 } from 'three'
 import {
   boxCollider,
   capsuleCollider,
   Collider,
   type ColliderData,
+  convexCollider,
   cylinderCollider,
+  Joint,
+  joint,
+  meshCollider,
   defineScene,
   type Engine,
   type Entity,
@@ -17,19 +21,36 @@ import {
   Transform,
 } from '../../engine'
 import { log } from '../console'
-import { type ColliderDoc, depthFirst, type EntityDoc, expandEntities, instantiatePrefab, type ProjectDoc } from '../document'
+import {
+  type ColliderDoc,
+  defaultProjectSettings,
+  depthFirst,
+  type EntityDoc,
+  expandEntities,
+  instantiatePrefab,
+  type JointDoc,
+  type ProjectDoc,
+  type ProjectSettings,
+} from '../document'
 import { MeshBatcher } from './batcher'
 import { type AssetResolver, NodeFactory } from './nodes'
 import type { ParticleEmitter } from './particles'
 import { PlaySession } from './playSession'
+import { visualGeometry } from './visualGeometry'
 import { SceneEnvironment } from './environment'
 
 const scale = new Vector3()
 
-/** Converts a collider doc to engine collider data, baking in the entity's world scale. */
-export function colliderData(c: ColliderDoc, worldScale: Vector3): ColliderData {
+/** Collision groups for a layer index: its own bit, and the layers it collides with. */
+export function layerGroups(layer: number, settings: ProjectSettings = defaultProjectSettings()): { layer: number; mask: number } {
+  const index = Math.max(0, Math.min(15, Math.floor(layer)))
+  return { layer: 1 << index, mask: settings.layerCollisions[index] ?? 0xffff }
+}
+
+/** Converts a primitive-shape collider doc to engine collider data, baking in the entity's world scale. */
+export function colliderData(c: ColliderDoc, worldScale: Vector3, groups = layerGroups(c.layer)): ColliderData {
   const { x: sx, y: sy, z: sz } = worldScale
-  const options = { offset: new Vector3(...c.center).multiply(worldScale), trigger: c.trigger, friction: c.friction }
+  const options = { offset: new Vector3(...c.center).multiply(worldScale), trigger: c.trigger, friction: c.friction, ...groups }
   switch (c.shape) {
     case 'sphere':
       return sphereCollider(c.radius * Math.max(sx, sy, sz), options)
@@ -44,6 +65,22 @@ export function colliderData(c: ColliderDoc, worldScale: Vector3): ColliderData 
   }
 }
 
+/** Engine joint data from a joint doc: degrees become radians, local units get the entity's scale. */
+export function jointData(j: JointDoc, target: Entity | null, worldScale: Vector3) {
+  const angular = j.type === 'hinge'
+  const unit = (v: number) => (angular ? (v * Math.PI) / 180 : v)
+  return joint(j.type, target, {
+    anchor: new Vector3(...j.anchor).multiply(worldScale),
+    axis: new Vector3(...j.axis),
+    limits: j.limits ? [unit(j.min), unit(j.max)] : null,
+    restLength: j.restLength,
+    stiffness: j.stiffness,
+    damping: j.damping,
+    motorSpeed: unit(j.motorSpeed),
+    motorStrength: j.motorStrength,
+  })
+}
+
 /** Builds ECS entities from entity docs. Used for the initial scene and for runtime spawning. */
 export class PlayBuilder {
   constructor(
@@ -51,6 +88,7 @@ export class PlayBuilder {
     private readonly factory: NodeFactory,
     private readonly session: PlaySession,
     private readonly batcher?: MeshBatcher,
+    private readonly settings: ProjectSettings = defaultProjectSettings(),
   ) {}
 
   /** `entities` must be parent-first. Returns doc id → entity, plus the main camera if one was built. */
@@ -103,7 +141,9 @@ export class PlayBuilder {
       }
       if (e.collider) {
         node.getWorldScale(scale)
-        world.add(entity, Collider, colliderData(e.collider, scale))
+        const groups = layerGroups(e.collider.layer, this.settings)
+        if (e.collider.shape === 'mesh' || e.collider.shape === 'convex') this.addMeshCollider(entity, node, e, groups)
+        else world.add(entity, Collider, colliderData(e.collider, scale, groups))
       }
       const handle = { entity, name: e.name, object: node, body: world.tryGet(entity, RigidBody) }
       const parentEntity = e.parent ? (ids.get(e.parent) ?? null) : (parent?.entity ?? null)
@@ -112,7 +152,42 @@ export class PlayBuilder {
       const emitter = node.userData.particles as ParticleEmitter | undefined
       if (emitter && e.particles?.destroyWhenDone) emitter.onFinished = () => this.session.destroy(entity)
     }
+    // Joints last: their targets may be built later in the list.
+    for (const e of entities) {
+      const entity = ids.get(e.id)
+      const node = nodes.get(e.id)
+      if (!e.joint || entity === undefined || !node) continue
+      if (!e.rigidBody) {
+        log('warn', `"${e.name}": a Joint needs a Rigid Body`)
+        continue
+      }
+      node.getWorldScale(scale)
+      const target = e.joint.target ? (ids.get(e.joint.target) ?? null) : null
+      world.add(entity, Joint, jointData(e.joint, target, scale))
+    }
     return { ids, mainCamera }
+  }
+
+  /** Mesh and convex colliders are built from the visual, once a model has loaded. */
+  private addMeshCollider(entity: Entity, node: Group, e: EntityDoc, groups: { layer: number; mask: number }): void {
+    const c = e.collider!
+    const build = () => {
+      const { world } = this.engine
+      if (!world.isAlive(entity)) return
+      node.getWorldScale(scale)
+      const { vertices, indices } = visualGeometry(node, scale)
+      if (vertices.length === 0) {
+        log('warn', `"${e.name}": a ${c.shape} collider needs a Mesh Renderer or Model`)
+        return
+      }
+      // Triangle meshes have no inside, so moving bodies use the convex hull instead.
+      const dynamic = e.rigidBody && e.rigidBody.type === 'dynamic'
+      const options = { offset: new Vector3(...c.center).multiply(scale), trigger: c.trigger, friction: c.friction, ...groups }
+      world.add(entity, Collider, c.shape === 'mesh' && !dynamic ? meshCollider(vertices, indices, options) : convexCollider(vertices, options))
+    }
+    const ready = node.userData.modelReady as Promise<unknown> | undefined
+    if (ready) void ready.then(build)
+    else build()
   }
 }
 
@@ -124,6 +199,8 @@ export interface PlayOptions {
   fallbackCamera: PerspectiveCamera
   /** Extra setup once the scene is built (e.g. disabling editor controls). */
   onStart?(engine: Engine): void
+  /** When this returns true, every collider and joint is drawn as lines (the editor's Colliders toggle). */
+  showColliders?(): boolean
 }
 
 /** Builds a running game for one scene of a frozen copy of the project. */
@@ -145,7 +222,7 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
       const session = new PlaySession(engine, doc, physics, listener, options.assets)
       const factory = new NodeFactory(engine, options.assets, false, listener)
       const batcher = new MeshBatcher(engine.scene)
-      const builder = new PlayBuilder(engine, factory, session, batcher)
+      const builder = new PlayBuilder(engine, factory, session, batcher, doc.settings)
       session.connect({
         sceneName: scene.name,
         spawn: (prefabName, spawn) => {
@@ -193,6 +270,24 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
       })
       engine.addSystem({ name: 'particles', phase: 'late', order: 100, run: (_engine, dt) => factory.updateParticles(dt) })
       engine.addSystem({ name: 'batching', phase: 'render', order: -10, run: () => batcher.update() })
+      if (options.showColliders) {
+        const show = options.showColliders
+        const lines = new LineSegments(new BufferGeometry(), new LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true, fog: false }))
+        lines.frustumCulled = false
+        lines.renderOrder = 999
+        engine.scene.add(lines)
+        engine.addSystem({
+          name: 'physics.debug',
+          phase: 'render',
+          run: () => {
+            lines.visible = show()
+            if (!lines.visible) return
+            const { vertices, colors } = physics.debugLines()
+            lines.geometry.setAttribute('position', new BufferAttribute(vertices, 3))
+            lines.geometry.setAttribute('color', new BufferAttribute(colors, 4))
+          },
+        })
+      }
       options.onStart?.(engine)
     },
   })

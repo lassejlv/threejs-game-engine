@@ -62,6 +62,7 @@ export function Editor() {
               gameCamera = e.camera
               applyPlayView(e)
             },
+            showColliders: () => editorStore.get().showColliders,
           })
         : editScene,
     // playRun restarts the scene even when the id is unchanged.
