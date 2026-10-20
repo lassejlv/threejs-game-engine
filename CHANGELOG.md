@@ -2,7 +2,9 @@
 
 All notable changes to the engine. The project follows [Semantic Versioning](https://semver.org): from 1.0, a minor or patch release never stops a project from opening (the format fixtures in `src/editor/fixtures/` enforce that), and the public script API (see `docs/script-api.md`) only changes in a major release.
 
-## Unreleased
+## 1.0.0 — 2026-10-20
+
+The first stable release: projects are stored locally and durably, exported games are tested in three browsers, imported scripts wait for trust, and the script API (`docs/script-api.md`) is public and versioned.
 
 ### Added
 - Projects as folders on disk through a local Bun file server (`server/files.ts`, started by `npm run dev`), with IndexedDB in the browser as the fallback. Several projects, each with its own assets; a project list to open, duplicate and delete them.
