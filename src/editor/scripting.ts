@@ -37,6 +37,13 @@ export interface PhysicsApi {
   applyImpulse(target: Handle, impulse: THREE.Vector3): void
 }
 
+export interface SpawnOptions {
+  position?: THREE.Vector3Like
+  /** Euler angles in degrees. */
+  rotation?: THREE.Vector3Like
+  parent?: Handle
+}
+
 export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly params: P
   readonly engine: Engine
@@ -48,7 +55,13 @@ export interface ScriptContext<P = Record<string, ParamValue>> extends Handle {
   readonly globals: Record<string, unknown>
   readonly hud: HudApi
   readonly physics: PhysicsApi
+  /** Name of the running scene. */
+  readonly sceneName: string
   find(name: string): Handle | undefined
+  /** Creates an instance of a prefab (by name). Its scripts start next frame. */
+  spawn(prefab: string, options?: SpawnOptions): Handle | undefined
+  /** Switches to another scene (by name) after this frame. */
+  loadScene(name: string): void
   destroy(target?: Handle): void
   log(...args: unknown[]): void
   warn(...args: unknown[]): void

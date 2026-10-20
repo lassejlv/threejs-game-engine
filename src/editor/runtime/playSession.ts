@@ -1,7 +1,7 @@
 import { createStore, defineComponent, type Engine, type Entity, type RapierPhysics, type System } from '../../engine'
 import { log } from '../console'
 import type { EntityDoc, ParamValue, ProjectDoc } from '../document'
-import { type Behavior, type Handle, type HudApi, type PhysicsApi, resolveBehavior, type ScriptContext } from '../scripting'
+import { type Behavior, type Handle, type HudApi, type PhysicsApi, resolveBehavior, type ScriptContext, type SpawnOptions } from '../scripting'
 
 export const hudStore = createStore({
   values: {} as Record<string, string | number>,
@@ -19,9 +19,18 @@ const Scripts = defineComponent<Instance[]>('Scripts')
 
 type Lifecycle = 'fixedUpdate' | 'update' | 'lateUpdate'
 
+/** Scene-level services the session can't build itself. */
+export interface SessionRuntime {
+  sceneName: string
+  spawn(prefab: string, options: SpawnOptions): Handle | undefined
+  loadScene(name: string): void
+}
+
 /** Runs entity scripts for one play session. */
 export class PlaySession {
   readonly globals: Record<string, unknown> = {}
+  private runtime: SessionRuntime = { sceneName: '', spawn: () => undefined, loadScene: () => {} }
+  private pendingScene: string | null = null
   private readonly handles = new Map<Entity, Handle>()
   private readonly byName = new Map<string, Entity[]>()
   private readonly children = new Map<Entity, Entity[]>()
@@ -41,6 +50,14 @@ export class PlaySession {
     private readonly rapier: RapierPhysics,
   ) {
     hudStore.set({ values: {}, message: null })
+  }
+
+  connect(runtime: SessionRuntime): void {
+    this.runtime = runtime
+  }
+
+  handle(entity: Entity): Handle | undefined {
+    return this.handles.get(entity)
   }
 
   register(handle: Handle, parent: Entity | null): void {
@@ -87,6 +104,16 @@ export class PlaySession {
       },
       { name: 'scripts.update', phase: 'update', run: run('update') },
       { name: 'scripts.lateUpdate', phase: 'late', run: run('lateUpdate') },
+      {
+        // Scene switches wait until the frame is done so no script runs against a torn-down world.
+        name: 'scripts.sceneSwitch',
+        phase: 'render',
+        run: () => {
+          const next = this.pendingScene
+          this.pendingScene = null
+          if (next !== null) this.runtime.loadScene(next)
+        },
+      },
     ]
   }
 
@@ -94,6 +121,7 @@ export class PlaySession {
     const params: Record<string, ParamValue> = {}
     for (const key in behavior.params) params[key] = key in overrides ? overrides[key] : behavior.params[key]
     const prefix = `[${handle.name}]`
+    const session = this
     const physics: PhysicsApi = {
       raycast: (origin, direction, maxDistance, options = {}) => {
         const hit = this.rapier.raycast(origin, direction, maxDistance, {
@@ -115,6 +143,13 @@ export class PlaySession {
       globals: this.globals,
       hud: this.hud,
       physics,
+      get sceneName() {
+        return session.runtime.sceneName
+      },
+      spawn: (prefab, options = {}) => this.runtime.spawn(prefab, options),
+      loadScene: (name) => {
+        this.pendingScene = name
+      },
       find: (name) => {
         const entity = this.byName.get(name)?.find((e) => this.engine.world.isAlive(e))
         return entity === undefined ? undefined : this.handles.get(entity)

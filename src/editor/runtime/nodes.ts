@@ -28,9 +28,13 @@ import {
   MathUtils,
 } from 'three'
 import type { Engine } from '../../engine'
-import type { AssetLibrary } from '../assetLibrary'
 import { log } from '../console'
 import type { EntityDoc, Primitive } from '../document'
+
+/** Anything that can turn an asset id into a loadable URL (the editor's IndexedDB library, or an exported game's bundle). */
+export interface AssetResolver {
+  url(id: string): string | null
+}
 
 /** Shared unit-sized geometries (never disposed per entity). */
 const primitives = new Map<Primitive, BufferGeometry>()
@@ -67,7 +71,7 @@ export function isShared(geometry: BufferGeometry): boolean {
 export class NodeFactory {
   constructor(
     private readonly engine: Engine,
-    private readonly library: AssetLibrary,
+    private readonly library: AssetResolver,
     private readonly editorMode: boolean,
   ) {}
 

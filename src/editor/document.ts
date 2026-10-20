@@ -103,7 +103,13 @@ export interface EntityDoc {
   camera?: CameraDoc
   rigidBody?: RigidBodyDoc
   collider?: ColliderDoc
+  /**
+   * On a prefab instance these are parameter overrides: entries whose script
+   * matches one on the prefab root replace that script's params.
+   */
   scripts: ScriptRefDoc[]
+  /** Prefab id: this entity is an instance and its contents come from the prefab. */
+  prefab?: string
 }
 
 export interface ScriptDoc {
@@ -124,12 +130,27 @@ export interface SceneSettings {
   gravity: number
 }
 
-export interface ProjectDoc {
-  version: 1
+export interface SceneDoc {
+  id: string
   name: string
   settings: SceneSettings
   /** Flat list; array order is sibling order. */
   entities: EntityDoc[]
+}
+
+/** A reusable entity tree. Exactly one entity has `parent: null` (the root). */
+export interface PrefabDoc {
+  id: string
+  name: string
+  entities: EntityDoc[]
+}
+
+export interface ProjectDoc {
+  version: 2
+  name: string
+  /** The first scene is where an exported game starts. */
+  scenes: SceneDoc[]
+  prefabs: PrefabDoc[]
   scripts: ScriptDoc[]
 }
 
@@ -231,7 +252,7 @@ export function defaultSettings(): SceneSettings {
   }
 }
 
-export function emptyProject(): ProjectDoc {
+export function createScene(name: string): SceneDoc {
   const sun = createEntity('Directional Light', {
     transform: { position: [8, 14, 6], rotation: [-55, 40, 0], scale: [1, 1, 1] },
     light: { ...componentDefaults.light(), type: 'directional', intensity: 2, castShadow: true },
@@ -240,20 +261,92 @@ export function emptyProject(): ProjectDoc {
     transform: { position: [0, 4, 10], rotation: [-15, 0, 0], scale: [1, 1, 1] },
     camera: componentDefaults.camera(),
   })
-  return { version: 1, name: 'Untitled', settings: defaultSettings(), entities: [camera, sun], scripts: [] }
+  const ground = createEntity('Ground', {
+    transform: { position: [0, -0.5, 0], rotation: [0, 0, 0], scale: [30, 1, 30] },
+    mesh: { ...componentDefaults.mesh(), color: '#7a8a6a' },
+    collider: componentDefaults.collider(),
+  })
+  return { id: newId(), name, settings: defaultSettings(), entities: [camera, sun, ground] }
 }
 
-export function childrenOf(doc: ProjectDoc, parent: string | null): EntityDoc[] {
-  return doc.entities.filter((e) => e.parent === parent)
+export function emptyProject(): ProjectDoc {
+  return { version: 2, name: 'Untitled', scenes: [createScene('Main')], prefabs: [], scripts: [] }
+}
+
+export function prefabRoot(prefab: PrefabDoc): EntityDoc | undefined {
+  return prefab.entities.find((e) => e.parent === null)
+}
+
+/** For an id produced by `expandEntities`, the top-level entity it belongs to. */
+export function ownerId(id: string): string {
+  const slash = id.indexOf('/')
+  return slash === -1 ? id : id.slice(0, slash)
+}
+
+const MAX_PREFAB_DEPTH = 8
+
+/**
+ * Replaces prefab instances with the prefab's entities. The root keeps the
+ * instance's id, name, parent, active flag and transform; inner entities get
+ * ids of the form `instanceId/prefabEntityId`. Nested prefabs expand recursively.
+ */
+export function expandEntities(entities: EntityDoc[], prefabs: PrefabDoc[], depth = 0): EntityDoc[] {
+  if (!entities.some((e) => e.prefab)) return entities
+  const out: EntityDoc[] = []
+  for (const e of entities) {
+    if (e.prefab) out.push(...expandInstance(e, prefabs, depth))
+    else out.push(e)
+  }
+  return out
+}
+
+function expandInstance(instance: EntityDoc, prefabs: PrefabDoc[], depth: number): EntityDoc[] {
+  const prefab = prefabs.find((p) => p.id === instance.prefab)
+  const root = prefab && prefabRoot(prefab)
+  if (!prefab || !root || depth >= MAX_PREFAB_DEPTH) return [{ ...instance, prefab: undefined }]
+  const inner = expandEntities(prefab.entities, prefabs, depth + 1)
+  const mapId = (id: string) => (id === root.id ? instance.id : `${instance.id}/${id}`)
+  return inner.map((e) =>
+    e.id === root.id
+      ? {
+          ...e,
+          id: instance.id,
+          name: instance.name,
+          parent: instance.parent,
+          active: instance.active,
+          transform: instance.transform,
+          prefab: undefined,
+          scripts: e.scripts.map((ref) => {
+            const override = instance.scripts.find((o) => o.script === ref.script)
+            return override ? { ...ref, params: { ...ref.params, ...override.params } } : ref
+          }),
+        }
+      : { ...e, id: mapId(e.id), parent: e.parent ? mapId(e.parent) : instance.id },
+  )
+}
+
+/** A new, unparented instance of `prefab` using the prefab root's transform. */
+export function instantiatePrefab(prefab: PrefabDoc, partial: Partial<EntityDoc> = {}): EntityDoc {
+  // `scripts` on an instance holds parameter overrides only (see EntityDoc.scripts).
+  const root = prefabRoot(prefab)
+  return createEntity(prefab.name, {
+    transform: structuredClone(root?.transform ?? { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }),
+    prefab: prefab.id,
+    ...partial,
+  })
+}
+
+export function childrenOf(entities: EntityDoc[], parent: string | null): EntityDoc[] {
+  return entities.filter((e) => e.parent === parent)
 }
 
 /** The entity and all its descendants. */
-export function subtreeIds(doc: ProjectDoc, id: string): Set<string> {
+export function subtreeIds(entities: EntityDoc[], id: string): Set<string> {
   const ids = new Set([id])
   let grew = true
   while (grew) {
     grew = false
-    for (const e of doc.entities) {
+    for (const e of entities) {
       if (e.parent && ids.has(e.parent) && !ids.has(e.id)) {
         ids.add(e.id)
         grew = true
@@ -264,9 +357,9 @@ export function subtreeIds(doc: ProjectDoc, id: string): Set<string> {
 }
 
 /** Entities ordered so every parent precedes its children. */
-export function depthFirst(doc: ProjectDoc): EntityDoc[] {
+export function depthFirst(entities: EntityDoc[]): EntityDoc[] {
   const byParent = new Map<string | null, EntityDoc[]>()
-  for (const e of doc.entities) {
+  for (const e of entities) {
     const list = byParent.get(e.parent) ?? []
     list.push(e)
     byParent.set(e.parent, list)
@@ -283,28 +376,45 @@ export function depthFirst(doc: ProjectDoc): EntityDoc[] {
 }
 
 /** Deep-copies an entity subtree with fresh ids. The copy's root keeps the original parent. */
-export function cloneSubtree(doc: ProjectDoc, id: string): EntityDoc[] {
-  const ids = subtreeIds(doc, id)
+export function cloneSubtree(entities: EntityDoc[], id: string, suffix = ' (copy)'): EntityDoc[] {
+  const ids = subtreeIds(entities, id)
   const remap = new Map<string, string>()
   for (const old of ids) remap.set(old, newId())
-  return doc.entities
+  return entities
     .filter((e) => ids.has(e.id))
     .map((e) => ({
       ...structuredClone(e),
       id: remap.get(e.id)!,
       parent: e.id === id ? e.parent : remap.get(e.parent!)!,
-      name: e.id === id ? `${e.name} (copy)` : e.name,
+      name: e.id === id ? `${e.name}${suffix}` : e.name,
     }))
 }
 
+/** Reads a saved project, upgrading older versions. */
 export function parseProject(json: unknown): ProjectDoc {
-  const doc = json as Partial<ProjectDoc>
-  if (!doc || doc.version !== 1 || !Array.isArray(doc.entities)) throw new Error('Not a project file (version 1)')
+  const raw = json as Record<string, unknown> | null
+  if (!raw || typeof raw !== 'object') throw new Error('Not a project file')
+  if (raw.version === 1 && Array.isArray(raw.entities)) {
+    return parseProject({
+      version: 2,
+      name: raw.name,
+      scenes: [{ id: newId(), name: 'Main', settings: raw.settings, entities: raw.entities }],
+      prefabs: [],
+      scripts: raw.scripts,
+    })
+  }
+  if (raw.version !== 2 || !Array.isArray(raw.scenes) || raw.scenes.length === 0) throw new Error('Not a project file')
+  const doc = raw as unknown as ProjectDoc
   return {
-    version: 1,
+    version: 2,
     name: doc.name ?? 'Untitled',
-    settings: { ...defaultSettings(), ...doc.settings },
-    entities: doc.entities.map(migrateEntity),
+    scenes: doc.scenes.map((scene) => ({
+      id: scene.id ?? newId(),
+      name: scene.name ?? 'Scene',
+      settings: { ...defaultSettings(), ...scene.settings },
+      entities: (scene.entities ?? []).map(migrateEntity),
+    })),
+    prefabs: (doc.prefabs ?? []).map((p) => ({ ...p, entities: p.entities.map(migrateEntity) })),
     scripts: doc.scripts ?? [],
   }
 }

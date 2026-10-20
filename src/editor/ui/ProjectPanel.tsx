@@ -1,8 +1,25 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useStore } from '../../react'
 import { consoleStore } from '../console'
 import { createEntity } from '../document'
-import { addEntity, createScript, deleteAsset, deleteScript, editorStore, importAssets } from '../editor'
+import {
+  addEntity,
+  addPrefabInstance,
+  createSceneAction,
+  createScript,
+  deleteAsset,
+  deletePrefab,
+  deleteScene,
+  deleteScript,
+  editorStore,
+  importAssets,
+  openPrefab,
+  openScene,
+  renamePrefab,
+  setStartScene,
+  updateScene,
+} from '../editor'
+import { PREFAB_DRAG_TYPE } from './Hierarchy'
 import { ACCEPTED_ASSETS } from '../assetLibrary'
 import { sceneView } from '../runtime/editScene'
 import { BUILTINS } from '../scripting'
@@ -27,6 +44,123 @@ export function BottomPanel() {
   )
 }
 
+function ScenesAndPrefabs() {
+  const scenes = useStore(editorStore, (s) => s.doc.scenes)
+  const prefabs = useStore(editorStore, (s) => s.doc.prefabs)
+  const editing = useStore(editorStore, (s) => s.editing)
+  const lastScene = useStore(editorStore, (s) => s.lastScene)
+  const playing = useStore(editorStore, (s) => s.mode === 'play')
+  const [renaming, setRenaming] = useState<string | null>(null)
+
+  const rename = (id: string, current: string, apply: (name: string) => void) =>
+    renaming === id ? (
+      <input
+        className="rename"
+        defaultValue={current}
+        autoFocus
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={(e) => {
+          const name = e.currentTarget.value.trim()
+          if (name && name !== current) apply(name)
+          setRenaming(null)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+          if (e.key === 'Escape') setRenaming(null)
+        }}
+      />
+    ) : (
+      current
+    )
+
+  return (
+    <div className="project-column">
+      <div className="project-heading">
+        <span>Scenes</span>
+        <button type="button" onClick={createSceneAction} disabled={playing}>
+          <Icon name="plus" /> New
+        </button>
+      </div>
+      <ul className="asset-list">
+        {scenes.map((scene, index) => {
+          const open = editing.kind === 'scene' ? editing.id === scene.id : lastScene === scene.id
+          return (
+            <li key={scene.id} className={open ? 'current' : ''}>
+              <button
+                type="button"
+                className="asset"
+                disabled={playing}
+                onClick={() => openScene(scene.id)}
+                onDoubleClick={() => setRenaming(scene.id)}
+                title="Click to open, double-click to rename"
+              >
+                <Icon name="scene" className="icon-scene" />
+                {rename(scene.id, scene.name, (name) => updateScene(scene.id, { name }))}
+                {index === 0 && <span className="dim">start</span>}
+              </button>
+              {index > 0 && (
+                <button type="button" className="icon-button" disabled={playing} onClick={() => setStartScene(scene.id)} title="Make start scene">
+                  ⇡
+                </button>
+              )}
+              <button
+                type="button"
+                className="icon-button"
+                disabled={playing || scenes.length === 1}
+                onClick={() => window.confirm(`Delete scene "${scene.name}"?`) && deleteScene(scene.id)}
+                aria-label={`Delete ${scene.name}`}
+              >
+                ×
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="project-heading">
+        <span>Prefabs</span>
+      </div>
+      {prefabs.length === 0 ? (
+        <p className="empty">Select an object and use the prefab button in the Hierarchy.</p>
+      ) : (
+        <ul className="asset-list">
+          {prefabs.map((prefab) => (
+            <li key={prefab.id} className={editing.kind === 'prefab' && editing.id === prefab.id ? 'current' : ''}>
+              <button
+                type="button"
+                className="asset"
+                draggable={!playing}
+                onDragStart={(e) => e.dataTransfer.setData(PREFAB_DRAG_TYPE, prefab.id)}
+                onClick={() => {
+                  openPrefab(prefab.id)
+                  requestAnimationFrame(() => sceneView.focusSelection())
+                }}
+                onDoubleClick={() => setRenaming(prefab.id)}
+                disabled={playing}
+                title="Click to edit, drag into the Hierarchy to place"
+              >
+                <Icon name="prefab" className="icon-prefab" />
+                {rename(prefab.id, prefab.name, (name) => renamePrefab(prefab.id, name))}
+              </button>
+              <button type="button" disabled={playing} onClick={() => addPrefabInstance(prefab.id, sceneView.spawnPoint())}>
+                Place
+              </button>
+              <button
+                type="button"
+                className="icon-button"
+                disabled={playing}
+                onClick={() => window.confirm(`Delete prefab "${prefab.name}" and all its instances?`) && deletePrefab(prefab.id)}
+                aria-label={`Delete ${prefab.name}`}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function ProjectPanel() {
   const scripts = useStore(editorStore, (s) => s.doc.scripts)
   const assets = useStore(editorStore, (s) => s.assets)
@@ -45,6 +179,7 @@ function ProjectPanel() {
         void importAssets(e.dataTransfer.files)
       }}
     >
+      <ScenesAndPrefabs />
       <div className="project-column">
         <div className="project-heading">
           <span>Scripts</span>

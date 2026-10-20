@@ -6,11 +6,22 @@ import {
   defaultCollider,
   type EntityDoc,
   type ParamValue,
+  prefabRoot,
   type ProjectDoc,
   type ScriptRefDoc,
   type SceneSettings,
 } from '../document'
-import { editorStore, updateEntity, updateProject, type CommitOptions } from '../editor'
+import {
+  type CommitOptions,
+  currentScene,
+  editorStore,
+  openPrefab,
+  primarySelection,
+  targetEntities,
+  unpackPrefab,
+  updateEntity,
+  updateScene,
+} from '../editor'
 import { BUILTINS, resolveBehavior, scriptLabel } from '../scripting'
 import {
   CheckField,
@@ -23,14 +34,18 @@ import {
   TextInput,
   Vec3Field,
 } from './fields'
+import { sceneView } from '../runtime/editScene'
 import { Icon } from './icons'
 
 type Patch<K extends keyof EntityDoc> = Partial<NonNullable<EntityDoc[K]>>
 
 export function Inspector() {
   const selection = useStore(editorStore, (s) => s.selection)
-  const entity = useStore(editorStore, (s) => s.doc.entities.find((e) => e.id === s.selection))
+  const primary = useStore(editorStore, (s) => primarySelection(s))
+  const entity = useStore(editorStore, (s) => targetEntities(s.doc, s.editing).find((e) => e.id === primarySelection(s)))
   const doc = useStore(editorStore, (s) => s.doc)
+  const editing = useStore(editorStore, (s) => s.editing)
+  const scene = useStore(editorStore, (s) => currentScene(s))
   const playing = useStore(editorStore, (s) => s.mode === 'play')
 
   return (
@@ -40,19 +55,28 @@ export function Inspector() {
         {playing && <span className="badge">Read-only while playing</span>}
       </header>
       <fieldset className="panel-body" disabled={playing}>
-        {entity ? (
-          <EntityInspector key={selection} entity={entity} doc={doc} />
+        {selection.length > 1 && (
+          <p className="hint multi">
+            {selection.length} objects selected. Gizmo edits apply to all; the fields below edit the last one.
+          </p>
+        )}
+        {entity?.prefab ? (
+          <InstanceInspector key={primary} entity={entity} doc={doc} />
+        ) : entity ? (
+          <EntityInspector key={primary} entity={entity} doc={doc} />
+        ) : editing.kind === 'prefab' ? (
+          <p className="hint">Editing a prefab. Changes apply to every instance. Select an object to edit it.</p>
         ) : (
-          <SceneInspector settings={doc.settings} />
+          <SceneInspector key={scene.id} sceneId={scene.id} settings={scene.settings} />
         )}
       </fieldset>
     </aside>
   )
 }
 
-function SceneInspector({ settings }: { settings: SceneSettings }) {
+function SceneInspector({ sceneId, settings }: { sceneId: string; settings: SceneSettings }) {
   const set = (patch: Partial<SceneSettings>, key: string) =>
-    updateProject({ settings: { ...editorStore.get().doc.settings, ...patch } }, { merge: `settings.${key}` })
+    updateScene(sceneId, { settings: { ...settings, ...patch } }, { merge: `settings.${sceneId}.${key}` })
   return (
     <>
       <p className="hint">Nothing selected. These settings apply to the whole scene.</p>
@@ -72,6 +96,113 @@ function SceneInspector({ settings }: { settings: SceneSettings }) {
       <Section title="Physics" icon={<Icon name="body" />}>
         <NumberField label="Gravity" value={settings.gravity} step={0.5} onChange={(v) => set({ gravity: v }, 'g')} />
       </Section>
+    </>
+  )
+}
+
+/** A prefab instance: own transform, name and active flag, plus script parameter overrides. */
+function InstanceInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }) {
+  const id = entity.id
+  const prefab = doc.prefabs.find((p) => p.id === entity.prefab)
+  const root = prefab && prefabRoot(prefab)
+  const t = entity.transform
+  const merge = (key: string): CommitOptions => ({ merge: `${id}.${key}` })
+  const setOverride = (script: string, key: string, value: ParamValue) =>
+    updateEntity(
+      id,
+      (e) => {
+        const existing = e.scripts.find((s) => s.script === script)
+        const params = { ...existing?.params, [key]: value }
+        return {
+          scripts: existing
+            ? e.scripts.map((s) => (s.script === script ? { ...s, params } : s))
+            : [...e.scripts, { script, params }],
+        }
+      },
+      merge(`override.${script}.${key}`),
+    )
+  const resetOverrides = () => updateEntity(id, { scripts: [] })
+
+  return (
+    <>
+      <div className="entity-header">
+        <input type="checkbox" checked={entity.active} onChange={(e) => updateEntity(id, { active: e.target.checked })} title="Active" aria-label="Active" />
+        <TextInput className="entity-name" value={entity.name} onChange={(name) => name && updateEntity(id, { name })} />
+      </div>
+      <Section title={`Prefab: ${prefab?.name ?? 'missing'}`} icon={<Icon name="prefab" className="icon-prefab" />}>
+        {prefab ? (
+          <div className="button-row">
+            <button
+              type="button"
+              onClick={() => {
+                openPrefab(prefab.id)
+                requestAnimationFrame(() => sceneView.focusSelection())
+              }}
+            >
+              Open prefab
+            </button>
+            <button type="button" onClick={() => unpackPrefab(id)} title="Replace with plain, editable copies">
+              Unpack
+            </button>
+          </div>
+        ) : (
+          <p className="error-text">This prefab was deleted.</p>
+        )}
+      </Section>
+      <Section title="Transform" icon={<Icon name="move" />}>
+        <Vec3Field label="Position" value={t.position} onChange={(position) => updateEntity(id, { transform: { ...t, position } }, merge('pos'))} />
+        <Vec3Field label="Rotation" value={t.rotation} step={1} onChange={(rotation) => updateEntity(id, { transform: { ...t, rotation } }, merge('rot'))} />
+        <Vec3Field label="Scale" value={t.scale} step={0.05} onChange={(scale) => updateEntity(id, { transform: { ...t, scale } }, merge('scale'))} />
+      </Section>
+      {root?.scripts.map((ref) => {
+        const behavior = resolveBehavior(ref.script, doc)
+        if (behavior instanceof Error) return null
+        const override = entity.scripts.find((s) => s.script === ref.script)?.params ?? {}
+        return (
+          <Section key={ref.script} title={`${scriptLabel(ref.script, doc)} (overrides)`} icon={<Icon name="script" />}>
+            <ParamFields
+              params={behavior.params}
+              values={{ ...ref.params, ...override }}
+              overridden={override}
+              onChange={(key, value) => setOverride(ref.script, key, value)}
+            />
+          </Section>
+        )
+      })}
+      {entity.scripts.length > 0 && (
+        <div className="add-component">
+          <button type="button" onClick={resetOverrides}>
+            Revert overrides
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Inspector fields for script params; types are inferred from the defaults. */
+function ParamFields({
+  params,
+  values,
+  overridden,
+  onChange,
+}: {
+  params: Record<string, ParamValue>
+  values: Record<string, ParamValue>
+  overridden?: Record<string, ParamValue>
+  onChange: (key: string, value: ParamValue) => void
+}) {
+  return (
+    <>
+      {Object.entries(params).map(([key, fallback]) => {
+        const value = key in values ? values[key] : fallback
+        const label = `${key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}${overridden && key in overridden ? ' •' : ''}`
+        if (typeof fallback === 'number')
+          return <NumberField key={key} label={label} value={Number(value)} step={Math.abs(fallback) >= 10 ? 1 : 0.05} onChange={(v) => onChange(key, v)} />
+        if (typeof fallback === 'boolean') return <CheckField key={key} label={label} value={Boolean(value)} onChange={(v) => onChange(key, v)} />
+        if (/^#[0-9a-f]{6}$/i.test(fallback)) return <ColorField key={key} label={label} value={String(value)} onChange={(v) => onChange(key, v)} />
+        return <TextField key={key} label={label} value={String(value)} onChange={(v) => onChange(key, v)} />
+      })}
     </>
   )
 }
@@ -302,17 +433,7 @@ function ScriptSection({
       ) : (
         <>
           {behavior.description && <p className="hint">{behavior.description}</p>}
-          {Object.entries(behavior.params).map(([key, fallback]) => {
-            const value = key in scriptRef.params ? scriptRef.params[key] : fallback
-            const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())
-            if (typeof fallback === 'number')
-              return <NumberField key={key} label={label} value={Number(value)} step={Math.abs(fallback) >= 10 ? 1 : 0.05} onChange={(v) => setParam(key, v)} />
-            if (typeof fallback === 'boolean')
-              return <CheckField key={key} label={label} value={Boolean(value)} onChange={(v) => setParam(key, v)} />
-            if (/^#[0-9a-f]{6}$/i.test(fallback))
-              return <ColorField key={key} label={label} value={String(value)} onChange={(v) => setParam(key, v)} />
-            return <TextField key={key} label={label} value={String(value)} onChange={(v) => setParam(key, v)} />
-          })}
+          <ParamFields params={behavior.params} values={scriptRef.params} onChange={setParam} />
         </>
       )}
       {isProjectScript && (

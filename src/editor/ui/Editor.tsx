@@ -1,21 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { PerspectiveCamera } from 'three'
 import type { Engine } from '../../engine'
 import { DebugOverlay, GameCanvas, useStore } from '../../react'
 import {
+  assetLibrary,
   attachEngine,
-  deleteEntity,
-  duplicateEntity,
+  copySelection,
+  deleteEntities,
+  duplicateEntities,
   editorStore,
+  pasteClipboard,
   play,
   redo,
   select,
   stop,
+  switchPlayScene,
   undo,
 } from '../editor'
+import { editorCamera, getOrbit } from '../runtime/editorCamera'
 import { createEditScene, sceneView } from '../runtime/editScene'
 import { createPlayScene } from '../runtime/playScene'
 import { BottomPanel } from './ProjectPanel'
 import { Hierarchy } from './Hierarchy'
+import { Icon } from './icons'
 import { Inspector } from './Inspector'
 import { PlayHud } from './PlayHud'
 import { ScriptEditor } from './ScriptEditor'
@@ -24,11 +31,44 @@ import '../editor.css'
 
 const editScene = createEditScene()
 
+/** The camera the running game chose, so the Scene/Game tabs can switch back and forth while playing. */
+let gameCamera: PerspectiveCamera | null = null
+
+function applyPlayView(engine: Engine): void {
+  const { mode, view } = editorStore.get()
+  if (mode !== 'play') return
+  const orbit = getOrbit(engine)
+  orbit.enabled = view === 'scene'
+  engine.camera = view === 'scene' || !gameCamera ? editorCamera : gameCamera
+}
+
 export function Editor() {
   const [engine, setEngine] = useState<Engine | null>(null)
   const mode = useStore(editorStore, (s) => s.mode)
   const playDoc = useStore(editorStore, (s) => s.playDoc)
-  const scene = useMemo(() => (mode === 'play' && playDoc ? createPlayScene(playDoc) : editScene), [mode, playDoc])
+  const playSceneId = useStore(editorStore, (s) => s.playScene)
+  const view = useStore(editorStore, (s) => s.view)
+  const showColliders = useStore(editorStore, (s) => s.showColliders)
+
+  const scene = useMemo(
+    () =>
+      mode === 'play' && playDoc && playSceneId
+        ? createPlayScene(playDoc, playSceneId, {
+            assets: assetLibrary,
+            loadScene: switchPlayScene,
+            fallbackCamera: editorCamera,
+            onStart: (e) => {
+              gameCamera = e.camera
+              applyPlayView(e)
+            },
+          })
+        : editScene,
+    [mode, playDoc, playSceneId],
+  )
+
+  useEffect(() => {
+    if (engine) applyPlayView(engine)
+  }, [engine, view])
 
   useShortcuts()
 
@@ -37,19 +77,46 @@ export function Editor() {
       <Toolbar engine={engine} />
       <Hierarchy />
       <main className="viewport">
-        <GameCanvas
-          style={{ position: 'absolute', inset: 0 }}
-          scene={scene}
-          onReady={(e) => {
-            attachEngine(e)
-            setEngine(e)
-            if (import.meta.env.DEV) Object.assign(window, { __engine: e })
-          }}
-        >
-          <PlayHud />
-          <DebugOverlay />
-        </GameCanvas>
-        <ScriptEditor />
+        <div className="viewport-bar">
+          <div className="tabs" role="tablist">
+            {(['scene', 'game'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="tab"
+                aria-selected={view === v}
+                className={view === v ? 'active' : ''}
+                onClick={() => editorStore.set({ view: v })}
+              >
+                {v === 'scene' ? 'Scene' : 'Game'}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className={`tool-button ${showColliders ? 'active' : ''}`}
+            onClick={() => editorStore.set({ showColliders: !showColliders })}
+            title="Show all colliders"
+            aria-pressed={showColliders}
+          >
+            <Icon name="collider" /> Colliders
+          </button>
+        </div>
+        <div className="viewport-stage">
+          <GameCanvas
+            style={{ position: 'absolute', inset: 0 }}
+            scene={scene}
+            onReady={(e) => {
+              attachEngine(e)
+              setEngine(e)
+              if (import.meta.env.DEV) Object.assign(window, { __engine: e })
+            }}
+          >
+            <PlayHud />
+            <DebugOverlay />
+          </GameCanvas>
+          <ScriptEditor />
+        </div>
       </main>
       <Inspector />
       <BottomPanel />
@@ -89,7 +156,12 @@ function useShortcuts() {
         redo()
       } else if (mod && key === 'd') {
         e.preventDefault()
-        if (state.selection) duplicateEntity(state.selection)
+        duplicateEntities()
+      } else if (mod && key === 'c') {
+        copySelection()
+      } else if (mod && key === 'v') {
+        e.preventDefault()
+        pasteClipboard()
       } else if (mod) {
         return
       } else if (key === 'w') editorStore.set({ tool: 'translate' })
@@ -97,9 +169,9 @@ function useShortcuts() {
       else if (key === 'r') editorStore.set({ tool: 'scale' })
       else if (key === 'f') sceneView.focusSelection()
       else if (key === 'escape') select(null)
-      else if ((key === 'delete' || key === 'backspace') && state.selection) {
+      else if ((key === 'delete' || key === 'backspace') && state.selection.length) {
         e.preventDefault()
-        deleteEntity(state.selection)
+        deleteEntities()
       }
     }
     window.addEventListener('keydown', onKey)

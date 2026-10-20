@@ -17,10 +17,8 @@ import {
   Transform,
 } from '../../engine'
 import { log } from '../console'
-import { type ColliderDoc, depthFirst, type EntityDoc, type ProjectDoc } from '../document'
-import { assetLibrary } from '../editor'
-import { editorCamera, getOrbit } from './editorCamera'
-import { NodeFactory } from './nodes'
+import { type ColliderDoc, depthFirst, type EntityDoc, expandEntities, instantiatePrefab, type ProjectDoc } from '../document'
+import { type AssetResolver, NodeFactory } from './nodes'
 import { PlaySession } from './playSession'
 import { applySettings } from './settings'
 
@@ -112,30 +110,63 @@ export class PlayBuilder {
   }
 }
 
-/** Builds a running game from a frozen copy of the project. */
-export function createPlayScene(doc: ProjectDoc): GameScene {
+export interface PlayOptions {
+  assets: AssetResolver
+  /** Called when a script asks for another scene. */
+  loadScene(sceneId: string): void
+  /** Used when the scene has no main camera. */
+  fallbackCamera: PerspectiveCamera
+  /** Extra setup once the scene is built (e.g. disabling editor controls). */
+  onStart?(engine: Engine): void
+}
+
+/** Builds a running game for one scene of a frozen copy of the project. */
+export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayOptions): GameScene {
+  const scene = doc.scenes.find((s) => s.id === sceneId) ?? doc.scenes[0]
   return defineScene({
-    name: `${doc.name} (play)`,
+    name: scene.name,
     physics: false, // Rapier replaces the built-in physics
     async setup({ engine, signal }) {
       const R = await loadRapier()
       if (signal.aborted) return
-      engine.physics.gravity.set(0, -doc.settings.gravity, 0)
-      applySettings(engine.scene, doc.settings)
-      getOrbit(engine).enabled = false
+      engine.physics.gravity.set(0, -scene.settings.gravity, 0)
+      applySettings(engine.scene, scene.settings)
 
       const physics = new RapierPhysics(engine, R)
       const session = new PlaySession(engine, doc, physics)
-      const builder = new PlayBuilder(engine, new NodeFactory(engine, assetLibrary, false), session)
-      const { mainCamera } = builder.instantiate(depthFirst(doc))
+      const builder = new PlayBuilder(engine, new NodeFactory(engine, options.assets, false), session)
+      session.connect({
+        sceneName: scene.name,
+        spawn: (prefabName, spawn) => {
+          const prefab = doc.prefabs.find((p) => p.name === prefabName || p.id === prefabName)
+          if (!prefab) {
+            log('warn', `spawn: no prefab named "${prefabName}"`)
+            return undefined
+          }
+          const instance = instantiatePrefab(prefab)
+          if (spawn.position) instance.transform.position = [spawn.position.x, spawn.position.y, spawn.position.z]
+          if (spawn.rotation) instance.transform.rotation = [spawn.rotation.x, spawn.rotation.y, spawn.rotation.z]
+          const parent = spawn.parent ? { entity: spawn.parent.entity, node: spawn.parent.object as Group } : null
+          const { ids } = builder.instantiate(depthFirst(expandEntities([instance], doc.prefabs)), parent)
+          const entity = ids.get(instance.id)
+          return entity === undefined ? undefined : session.handle(entity)
+        },
+        loadScene: (name) => {
+          const target = doc.scenes.find((s) => s.name === name || s.id === name)
+          if (target) options.loadScene(target.id)
+          else log('warn', `loadScene: no scene named "${name}"`)
+        },
+      })
+      const { mainCamera } = builder.instantiate(depthFirst(expandEntities(scene.entities, doc.prefabs)))
 
       if (mainCamera) engine.camera = mainCamera
       else {
-        log('warn', 'No main camera in the scene; using the editor camera.')
-        engine.camera = editorCamera
+        log('warn', `"${scene.name}" has no main camera; using a default view.`)
+        engine.camera = options.fallbackCamera
       }
       for (const system of physics.systems()) engine.addSystem(system)
       for (const system of session.systems()) engine.addSystem(system)
+      options.onStart?.(engine)
     },
   })
 }

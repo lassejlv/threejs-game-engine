@@ -1,22 +1,33 @@
 import { describe, expect, it } from 'vitest'
-import { cloneSubtree, createEntity, depthFirst, parseProject, type ProjectDoc, subtreeIds } from './document'
+import {
+  cloneSubtree,
+  createEntity,
+  depthFirst,
+  type EntityDoc,
+  expandEntities,
+  instantiatePrefab,
+  ownerId,
+  parseProject,
+  type PrefabDoc,
+  subtreeIds,
+} from './document'
 import { sampleProject } from './sample'
 import { compileScript } from './scripting'
 
-function tree(): ProjectDoc {
+function tree(): EntityDoc[] {
   const root = createEntity('Root')
   const child = createEntity('Child', { parent: root.id })
   const grandchild = createEntity('Grandchild', { parent: child.id })
   const other = createEntity('Other')
   // Deliberately out of order: children before parents.
-  return parseProject({ version: 1, name: 't', entities: [grandchild, other, child, root], scripts: [] })
+  return [grandchild, other, child, root]
 }
 
 describe('document', () => {
   it('collects a subtree', () => {
-    const doc = tree()
-    const root = doc.entities.find((e) => e.name === 'Root')!
-    expect([...subtreeIds(doc, root.id)].map((id) => doc.entities.find((e) => e.id === id)!.name).sort()).toEqual([
+    const list = tree()
+    const root = list.find((e) => e.name === 'Root')!
+    expect([...subtreeIds(list, root.id)].map((id) => list.find((e) => e.id === id)!.name).sort()).toEqual([
       'Child',
       'Grandchild',
       'Root',
@@ -30,18 +41,46 @@ describe('document', () => {
   })
 
   it('clones a subtree with fresh ids and remapped parents', () => {
-    const doc = tree()
-    const root = doc.entities.find((e) => e.name === 'Root')!
-    const copies = cloneSubtree(doc, root.id)
+    const list = tree()
+    const root = list.find((e) => e.name === 'Root')!
+    const copies = cloneSubtree(list, root.id)
     const ids = new Set(copies.map((c) => c.id))
     expect(copies).toHaveLength(3)
-    expect(copies.some((c) => doc.entities.some((e) => e.id === c.id))).toBe(false)
+    expect(copies.some((c) => list.some((e) => e.id === c.id))).toBe(false)
     for (const c of copies) if (c.name !== 'Root (copy)') expect(ids.has(c.parent!)).toBe(true)
   })
 
   it('round-trips the sample project through JSON', () => {
     const doc = sampleProject()
     expect(parseProject(JSON.parse(JSON.stringify(doc)))).toEqual(doc)
+  })
+
+  it('upgrades version 1 files to a single scene', () => {
+    const doc = parseProject({ version: 1, name: 'Old', settings: {}, entities: tree(), scripts: [] })
+    expect(doc.version).toBe(2)
+    expect(doc.scenes).toHaveLength(1)
+    expect(doc.scenes[0].entities).toHaveLength(4)
+  })
+
+  it('expands prefab instances with derived ids and overrides', () => {
+    const root = createEntity('Enemy', { scripts: [{ script: 'builtin:Rotate', params: { y: 10 } }] })
+    const eye = createEntity('Eye', { parent: root.id })
+    const prefab: PrefabDoc = { id: 'p1', name: 'Enemy', entities: [root, eye] }
+    const instance = instantiatePrefab(prefab, { name: 'Boss', scripts: [{ script: 'builtin:Rotate', params: { y: 99 } }] })
+    const out = expandEntities([instance], [prefab])
+    expect(out.map((e) => e.name)).toEqual(['Boss', 'Eye'])
+    expect(out[0].id).toBe(instance.id)
+    expect(out[1].id).toBe(`${instance.id}/${eye.id}`)
+    expect(out[1].parent).toBe(instance.id)
+    expect(ownerId(out[1].id)).toBe(instance.id)
+    expect(out[0].scripts[0].params.y).toBe(99)
+  })
+
+  it('stops expanding self-referencing prefabs', () => {
+    const root = createEntity('Loop')
+    const prefab: PrefabDoc = { id: 'loop', name: 'Loop', entities: [root] }
+    prefab.entities.push(createEntity('Inner', { parent: root.id, prefab: 'loop' }))
+    expect(expandEntities([instantiatePrefab(prefab)], [prefab]).length).toBeLessThan(20)
   })
 
   it('rejects files that are not projects', () => {
