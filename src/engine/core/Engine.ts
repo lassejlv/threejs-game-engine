@@ -86,6 +86,14 @@ interface SystemEntry {
 
 const STATS_INTERVAL = 250
 
+/** Replaces the plain `renderer.render` call, e.g. with a post-processing chain. */
+export interface RenderPipeline {
+  render(scene: Scene, camera: PerspectiveCamera, dt: number): void
+  /** CSS size and pixel ratio of the canvas. */
+  setSize(width: number, height: number, pixelRatio: number): void
+  dispose(): void
+}
+
 export class Engine {
   readonly renderer: WebGLRenderer
   readonly canvas: HTMLCanvasElement
@@ -118,6 +126,7 @@ export class Engine {
   private readonly systems: Record<Phase, SystemEntry[]> = { fixed: [], update: [], late: [], render: [] }
   private readonly resizeObserver: ResizeObserver
   private currentScene: GameScene | null = null
+  private _pipeline: RenderPipeline | null = null
   private sceneAbort: AbortController | null = null
   private statFrames = 0
   private statCpu = 0
@@ -142,6 +151,8 @@ export class Engine {
       powerPreference: options.powerPreference ?? 'high-performance',
     })
     this.renderer.toneMapping = NeutralToneMapping
+    // Reset once per frame, so stats count every pass of a multi-pass pipeline.
+    this.renderer.info.autoReset = false
     this.renderer.shadowMap.enabled = options.shadows ?? true
     this.renderer.shadowMap.type = PCFShadowMap
     if (options.background !== undefined) this.renderer.setClearColor(options.background)
@@ -161,6 +172,18 @@ export class Engine {
 
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(this.container)
+    this.resize()
+  }
+
+  /** Custom render path (post-processing). Setting a new one disposes the old one. */
+  get pipeline(): RenderPipeline | null {
+    return this._pipeline
+  }
+
+  set pipeline(pipeline: RenderPipeline | null) {
+    if (pipeline === this._pipeline) return
+    this._pipeline?.dispose()
+    this._pipeline = pipeline
     this.resize()
   }
 
@@ -274,6 +297,7 @@ export class Engine {
     this.unloadScene()
     for (const phase of PHASES) for (const entry of [...this.systems[phase]]) this.removeEntry(entry)
     this.resizeObserver.disconnect()
+    this.pipeline = null
     this.input.detach()
     this.events.emit('dispose', {})
     this.events.clear()
@@ -355,7 +379,9 @@ export class Engine {
     }
 
     this.runPhase('render', time.delta)
-    this.renderer.render(this.scene, this._camera)
+    this.renderer.info.reset()
+    if (this._pipeline) this._pipeline.render(this.scene, this._camera, time.delta)
+    else this.renderer.render(this.scene, this._camera)
     this.input.endFrame()
     time.frame++
     this.collectStats(now, performance.now() - cpuStart)
@@ -408,8 +434,10 @@ export class Engine {
     const width = this.container.clientWidth
     const height = this.container.clientHeight
     if (width === 0 || height === 0) return
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, this.maxPixelRatio))
+    const pixelRatio = Math.min(window.devicePixelRatio, this.maxPixelRatio)
+    this.renderer.setPixelRatio(pixelRatio)
     this.renderer.setSize(width, height, false)
+    this._pipeline?.setSize(width, height, pixelRatio)
     this._camera.aspect = width / height
     this._camera.updateProjectionMatrix()
     this.events.emit('resize', { width, height })

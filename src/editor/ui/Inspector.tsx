@@ -98,6 +98,48 @@ function SceneInspector({ sceneId, settings }: { sceneId: string; settings: Scen
           </>
         )}
       </Section>
+      <Section title="Sky & Lighting" icon={<Icon name="light" />}>
+        <SelectField
+          label="Sky"
+          value={settings.sky}
+          options={[['color', 'Background color'], ['gradient', 'Gradient'], ['texture', '360° image']]}
+          onChange={(sky) => set({ sky }, 'sky')}
+        />
+        {settings.sky === 'gradient' && (
+          <>
+            <ColorField label="Top" value={settings.skyTop} onChange={(v) => set({ skyTop: v }, 'st')} />
+            <ColorField label="Horizon" value={settings.skyHorizon} onChange={(v) => set({ skyHorizon: v }, 'sh')} />
+            <ColorField label="Bottom" value={settings.skyBottom} onChange={(v) => set({ skyBottom: v }, 'sb')} />
+          </>
+        )}
+        {settings.sky === 'texture' && <TextureField value={settings.skyTexture} onChange={(v) => set({ skyTexture: v }, 'stex')} />}
+        <CheckField label="Sky lighting" value={settings.environment} onChange={(v) => set({ environment: v }, 'env')} />
+        {settings.environment && (
+          <NumberField label="Sky light intensity" value={settings.environmentIntensity} step={0.05} min={0} onChange={(v) => set({ environmentIntensity: v }, 'envi')} />
+        )}
+        <SelectField
+          label="Shadows"
+          value={settings.shadows}
+          options={[['off', 'Off'], ['low', 'Low (hard)'], ['medium', 'Medium'], ['high', 'High']]}
+          onChange={(shadows) => set({ shadows }, 'shadows')}
+        />
+        <p className="hint">Sky lighting reflects the sky on metallic and smooth surfaces. 360° images should be 2:1 panoramas.</p>
+      </Section>
+      <Section title="Post-processing" icon={<Icon name="eye" />}>
+        <NumberField label="Exposure" value={settings.exposure} step={0.05} min={0} onChange={(v) => set({ exposure: v }, 'exp')} />
+        <CheckField label="Bloom" value={settings.bloom} onChange={(v) => set({ bloom: v }, 'bloom')} />
+        {settings.bloom && (
+          <>
+            <NumberField label="Bloom strength" value={settings.bloomStrength} step={0.05} min={0} onChange={(v) => set({ bloomStrength: v }, 'bs')} />
+            <NumberField label="Bloom radius" value={settings.bloomRadius} step={0.05} min={0} max={1} onChange={(v) => set({ bloomRadius: v }, 'br')} />
+            <NumberField label="Bloom threshold" value={settings.bloomThreshold} step={0.05} min={0} onChange={(v) => set({ bloomThreshold: v }, 'bt')} />
+          </>
+        )}
+        <NumberField label="Vignette" value={settings.vignette} step={0.05} min={0} max={1} onChange={(v) => set({ vignette: v }, 'vig')} />
+        <NumberField label="Saturation" value={settings.saturation} step={0.05} min={0} onChange={(v) => set({ saturation: v }, 'sat')} />
+        <NumberField label="Contrast" value={settings.contrast} step={0.05} min={0} onChange={(v) => set({ contrast: v }, 'con')} />
+        <p className="hint">Bloom makes bright and emissive surfaces glow. Lower the threshold for more glow.</p>
+      </Section>
       <Section title="Physics" icon={<Icon name="body" />}>
         <NumberField label="Gravity" value={settings.gravity} step={0.5} onChange={(v) => set({ gravity: v }, 'g')} />
       </Section>

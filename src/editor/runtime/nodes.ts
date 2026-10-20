@@ -34,6 +34,7 @@ import { createStore, type Engine } from '../../engine'
 import { log } from '../console'
 import type { EntityDoc, Primitive } from '../document'
 import { Animator } from './animator'
+import { shadowMapSize } from './environment'
 import { ParticleEmitter } from './particles'
 
 /** Animation clip names per model asset, filled as models load (for the inspector's clip picker). */
@@ -331,7 +332,8 @@ export class NodeFactory {
 
 function configureShadow(light: DirectionalLight | PointLight | SpotLight, enabled: boolean): void {
   light.castShadow = enabled
-  light.shadow.mapSize.set(2048, 2048)
+  const size = shadowMapSize()
+  light.shadow.mapSize.set(size, size)
   light.shadow.bias = -0.0005
   light.shadow.normalBias = 0.02
 }

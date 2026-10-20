@@ -31,7 +31,7 @@ import {
 import { ColliderOutlines } from './colliderOutlines'
 import { editorCamera, getOrbit } from './editorCamera'
 import { disposeVisual, NodeFactory } from './nodes'
-import { applySettings } from './settings'
+import { SceneEnvironment } from './environment'
 
 /** Hooks the UI calls into the live scene view (set while edit mode is active). */
 export const sceneView = {
@@ -117,6 +117,8 @@ export function createEditScene(): GameScene {
       const root = new Group()
       scene.add(root)
       const factory = new NodeFactory(engine, assetLibrary, true)
+      const environment = new SceneEnvironment(engine, assetLibrary)
+      cleanups.push(() => environment.dispose())
       const sync = new DocSync(factory, root)
       const outlines = new ColliderOutlines()
       scene.add(outlines.group)
@@ -192,7 +194,7 @@ export function createEditScene(): GameScene {
         entities = expandedTarget(state.doc, state.editing)
         sync.sync(entities)
         const prefabMode = state.editing.kind === 'prefab'
-        applySettings(scene, prefabMode ? PREFAB_SETTINGS : currentScene(state).settings)
+        environment.apply(prefabMode ? PREFAB_SETTINGS : currentScene(state).settings)
         studio.visible = prefabMode && !entities.some((e) => e.light)
         grid.visible = state.view === 'scene'
 

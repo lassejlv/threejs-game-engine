@@ -21,7 +21,7 @@ import { type ColliderDoc, depthFirst, type EntityDoc, expandEntities, instantia
 import { type AssetResolver, NodeFactory } from './nodes'
 import type { ParticleEmitter } from './particles'
 import { PlaySession } from './playSession'
-import { applySettings } from './settings'
+import { SceneEnvironment } from './environment'
 
 const scale = new Vector3()
 
@@ -133,7 +133,9 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
       const R = await loadRapier()
       if (signal.aborted) return
       engine.physics.gravity.set(0, -scene.settings.gravity, 0)
-      applySettings(engine.scene, scene.settings)
+      const environment = new SceneEnvironment(engine, options.assets)
+      environment.apply(scene.settings)
+      engine.addSystem({ name: 'environment', phase: 'render', run: () => {}, init: () => () => environment.dispose() })
 
       const physics = new RapierPhysics(engine, R)
       const listener = new AudioListener()

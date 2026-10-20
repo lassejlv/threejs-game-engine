@@ -274,7 +274,23 @@ export function sampleProject(): ProjectDoc {
   const coinRush: SceneDoc = {
     id: newId(),
     name: 'Coin Rush',
-    settings: { ...defaultSettings(), fog: true, fogNear: 50, fogFar: 160 },
+    settings: {
+      ...defaultSettings(),
+      fog: true,
+      fogNear: 50,
+      fogFar: 160,
+      fogColor: '#b9d6ee',
+      sky: 'gradient',
+      skyTop: '#3f78c9',
+      skyHorizon: '#b9d6ee',
+      skyBottom: '#6d7f5a',
+      environment: true,
+      environmentIntensity: 0.5,
+      bloom: true,
+      bloomStrength: 0.45,
+      bloomThreshold: 0.95,
+      vignette: 0.2,
+    },
     entities,
   }
 
@@ -304,7 +320,16 @@ export function sampleProject(): ProjectDoc {
   const bonusRoom: SceneDoc = {
     id: newId(),
     name: 'Bonus Room',
-    settings: { ...defaultSettings(), background: '#1d1830', ambientIntensity: 0.25 },
+    settings: {
+      ...defaultSettings(),
+      background: '#1d1830',
+      ambientIntensity: 0.25,
+      bloom: true,
+      bloomStrength: 0.8,
+      bloomThreshold: 0.8,
+      vignette: 0.4,
+      saturation: 1.1,
+    },
     entities: bonus,
   }
 

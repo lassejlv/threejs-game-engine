@@ -192,7 +192,29 @@ export interface SceneSettings {
   fogFar: number
   /** Downward acceleration in m/s². */
   gravity: number
+  /** color: flat background. gradient: three-color sky. texture: an equirectangular (360°) image asset. */
+  sky: 'color' | 'gradient' | 'texture'
+  skyTop: string
+  skyHorizon: string
+  skyBottom: string
+  skyTexture: string | null
+  /** Lights and reflects the scene with the sky (image-based lighting). */
+  environment: boolean
+  environmentIntensity: number
+  shadows: ShadowQuality
+  /** Tone-mapping exposure. */
+  exposure: number
+  bloom: boolean
+  bloomStrength: number
+  bloomRadius: number
+  bloomThreshold: number
+  /** Darkens the screen edges, 0..1. */
+  vignette: number
+  saturation: number
+  contrast: number
 }
+
+export type ShadowQuality = 'off' | 'low' | 'medium' | 'high'
 
 export interface SceneDoc {
   id: string
@@ -349,6 +371,22 @@ export function defaultSettings(): SceneSettings {
     fogNear: 50,
     fogFar: 200,
     gravity: 25,
+    sky: 'color',
+    skyTop: '#4f86d1',
+    skyHorizon: '#cfe2f3',
+    skyBottom: '#5e6b55',
+    skyTexture: null,
+    environment: false,
+    environmentIntensity: 1,
+    shadows: 'medium',
+    exposure: 1,
+    bloom: false,
+    bloomStrength: 0.6,
+    bloomRadius: 0.4,
+    bloomThreshold: 0.9,
+    vignette: 0,
+    saturation: 1,
+    contrast: 1,
   }
 }
 
