@@ -134,21 +134,21 @@ async function main() {
     log(`HUD before moving: ${JSON.stringify(before)}`)
     assert(/\/ 32/.test(before), `HUD shows a coin counter out of 32 (got ${JSON.stringify(before)})`)
 
-    // The player spawns at the origin; a coin sits at (6, 1, 0). Strafe right into it.
-    await page.keyboard.down('KeyD')
-    await page.waitForTimeout(1500)
-    await page.keyboard.up('KeyD')
-
+    // The player spawns at the origin; a coin sits at (6, 1, 0). Strafe right into it,
+    // holding the key until the counter moves: software rendering can run the game far
+    // below real time (frame deltas are capped), so a fixed hold time is unreliable.
     const counter = hud.locator('.gu-stat-value', { hasText: '/ 32' }).first()
     let text = ''
-    const deadline = Date.now() + 5000
+    await page.keyboard.down('KeyD')
+    const deadline = Date.now() + 45_000
     while (Date.now() < deadline) {
       text = (await counter.textContent()) ?? ''
       if (/^[1-9]\d* \/ 32$/.test(text.trim())) break
       await page.waitForTimeout(100)
     }
+    await page.keyboard.up('KeyD')
     log(`HUD after moving: ${JSON.stringify(text)}`)
-    assert(/^1 \/ 32$/.test(text.trim()), `collected exactly one coin (HUD says ${JSON.stringify(text)})`)
+    assert(/^[1-9]\d* \/ 32$/.test(text.trim()), `collected a coin (HUD says ${JSON.stringify(text)})`)
 
     assert(errors.length === 0, `no console errors or page errors, got:\n  ${errors.join('\n  ')}`)
 
