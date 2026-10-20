@@ -19,9 +19,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: oven-sh/setup-bun@v2
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:server
       - run: npm run build
 
   e2e:
@@ -34,6 +36,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # With Bun the dev server starts the file server, so the smoke test saves projects to disk.
+      - uses: oven-sh/setup-bun@v2
       - run: npm ci
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium

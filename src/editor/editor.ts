@@ -1,6 +1,7 @@
 import { AudioContext as ThreeAudioContext } from 'three'
 import { createStore, type Engine } from '../engine'
 import { type AssetMeta, AssetLibrary } from './assetLibrary'
+import type { ProjectSummary } from './storage/types'
 import { log } from './console'
 import {
   cloneSubtree,
@@ -70,23 +71,27 @@ export interface EditorState {
   history: string[]
   /** Labels of the redoable steps, next one first. */
   redoHistory: string[]
+  /** Where the open project is saved and how the last save went (see projects.ts). */
+  storage: StorageStatus
+  /** Projects in the active store, most recently saved first. */
+  projects: ProjectSummary[]
 }
 
-const STORAGE_KEY = 'ge-project-v1'
+export interface StorageStatus {
+  /** null until projects.ts has picked a store (and in tests). */
+  kind: 'disk' | 'browser' | null
+  /** Human-readable location, e.g. "the projects/ folder". */
+  label: string
+  projectId: string | null
+  state: 'idle' | 'loading' | 'saving' | 'saved' | 'error'
+  error: string | null
+}
+
 const HISTORY_LIMIT = 200
 const MERGE_WINDOW_MS = 600
 
-function loadInitialDoc(): ProjectDoc {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return parseProject(JSON.parse(raw))
-  } catch (error) {
-    console.warn('[editor] could not restore project', error)
-  }
-  return sampleProject()
-}
-
-const initialDoc = loadInitialDoc()
+// The real project is opened by projects.ts once it has found where projects are stored.
+const initialDoc = sampleProject()
 
 export const editorStore = createStore<EditorState>({
   doc: initialDoc,
@@ -115,13 +120,11 @@ export const editorStore = createStore<EditorState>({
   bottomTab: 'project',
   history: [],
   redoHistory: [],
+  storage: { kind: null, label: '', projectId: null, state: 'idle', error: null },
+  projects: [],
 })
 
 export const assetLibrary = new AssetLibrary()
-void assetLibrary
-  .list()
-  .then((assets) => editorStore.set({ assets }))
-  .catch((error: unknown) => log('warn', 'Asset library unavailable:', error))
 
 let engineRef: Engine | null = null
 export function attachEngine(engine: Engine): void {
@@ -299,7 +302,8 @@ export function jumpToHistory(steps: number): void {
   while (past.length < steps && future.length) redo()
 }
 
-function replaceDoc(doc: ProjectDoc): void {
+/** Shows another document, clearing undo history (opening or creating a project). */
+export function replaceDoc(doc: ProjectDoc): void {
   stop()
   past.length = 0
   future.length = 0
@@ -747,23 +751,6 @@ export function download(filename: string, blob: Blob): void {
   a.click()
   setTimeout(() => URL.revokeObjectURL(a.href), 1000)
 }
-
-// Autosave (debounced). Play-mode changes never touch the doc (except script edits).
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-let lastSaved = editorStore.get().doc
-editorStore.subscribe(() => {
-  const current = editorStore.get().doc
-  if (current === lastSaved) return
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    lastSaved = editorStore.get().doc
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(lastSaved))
-    } catch (error) {
-      log('warn', 'Autosave failed:', error)
-    }
-  }, 400)
-})
 
 // ---------------------------------------------------------------------------
 // Clipboard (copies entity subtrees between scenes and prefabs)

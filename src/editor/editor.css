@@ -1077,3 +1077,106 @@ body.resizing canvas {
   line-height: 1.4;
   color: var(--text-dim);
 }
+.save-status {
+  margin-left: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.save-status.saving,
+.save-status.loading {
+  color: var(--text);
+}
+.save-status.error {
+  color: #fff;
+  background: #b3373d;
+  border-color: #b3373d;
+}
+.save-banner {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: min(760px, calc(100% - 32px));
+  padding: 8px 12px;
+  transform: translateX(-50%);
+  color: #fff;
+  background: #8f2a2f;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+}
+.save-banner strong,
+.save-banner button {
+  flex: none;
+  white-space: nowrap;
+}
+.save-banner button {
+  padding: 3px 8px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+}
+.boot-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  background: var(--bg-0, #111);
+}
+.projects-dialog {
+  width: min(640px, 100%);
+}
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.project-list li {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.project-list li.current .project-open {
+  border-color: var(--accent);
+}
+.project-open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+.project-open:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.project-title {
+  font-weight: 600;
+}
+.project-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.project-list .danger {
+  color: #ff8a8f;
+}

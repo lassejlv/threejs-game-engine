@@ -6,14 +6,17 @@
 //   E2E_HEADED=1   show the browser
 //   E2E_SCREENSHOT path to save a screenshot of the final state (also saved on failure)
 import { spawn } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { mkdirSync, mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromium } from 'playwright'
 
 const PORT = Number(process.env.E2E_PORT ?? 5199)
 const URL = `http://localhost:${PORT}/`
 const SERVER_TIMEOUT_MS = 120_000
+const FILES_PORT = Number(process.env.E2E_FILES_PORT ?? PORT + 1)
+const PROJECTS_DIR = mkdtempSync(join(tmpdir(), 'ge-e2e-projects-'))
 
 function log(...args) {
   console.log('[e2e]', ...args)
@@ -23,7 +26,8 @@ function startServer() {
   const server = spawn('npm', ['run', 'dev', '--', '--port', String(PORT), '--strictPort'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: process.platform !== 'win32', // own process group, so we can kill vite and its children
-    env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0' },
+    // A throwaway projects folder and file-server port, so the test never sees (or touches) real projects.
+    env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0', GE_PROJECTS_DIR: PROJECTS_DIR, GE_FILES_PORT: String(FILES_PORT) },
   })
   let output = ''
   server.stdout.on('data', (chunk) => (output += chunk))

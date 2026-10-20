@@ -6,9 +6,6 @@ import {
   addEntity,
   editorStore,
   exportProject,
-  importProject,
-  newFromTemplate,
-  newProject,
   play,
   redo,
   stepFrame,
@@ -24,7 +21,9 @@ import { sceneView } from '../runtime/editScene'
 import { TextInput } from './fields'
 import { Icon, type IconName } from './icons'
 import { Menu, type MenuItem } from './Menu'
+import { importProjectFile, newProjectFromTemplate, projectStore } from '../projects'
 import { ProjectSettingsDialog } from './ProjectSettings'
+import { ProjectsDialog } from './ProjectsDialog'
 import { TemplateDialog } from './TemplateDialog'
 
 export function createMenuItems(parent: string | null = null): MenuItem[] {
@@ -59,6 +58,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [projectsOpen, setProjectsOpen] = useState(false)
   const playing = mode === 'play'
 
   return (
@@ -66,13 +66,14 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
       <div className="toolbar-group">
         <span className="brand">◆ Engine</span>
         <TextInput className="project-name" value={name} onChange={(v) => updateProject({ name: v || 'Untitled' })} />
+        <SaveStatus />
         <Menu
           label="File"
           items={[
-            { label: 'New empty scene', onSelect: () => confirmDiscard() && newProject(true) },
-            { label: 'New from template…', onSelect: () => setTemplatesOpen(true) },
-            { label: 'Open project…', onSelect: () => fileInput.current?.click() },
-            { label: 'Export project', onSelect: exportProject },
+            { label: 'New project…', onSelect: () => setTemplatesOpen(true) },
+            { label: 'Open project…', onSelect: () => setProjectsOpen(true) },
+            { label: 'Import project…', onSelect: () => fileInput.current?.click() },
+            { label: 'Export project (.json)', onSelect: exportProject },
             { label: 'Project settings…', onSelect: () => setSettingsOpen(true) },
           ]}
         />
@@ -83,7 +84,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
           hidden
           onChange={(e) => {
             const file = e.target.files?.[0]
-            if (file) void importProject(file)
+            if (file) void importProjectFile(file)
             e.target.value = ''
           }}
         />
@@ -156,17 +157,46 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
         <TemplateDialog
           onClose={() => setTemplatesOpen(false)}
           onPick={(template) => {
-            if (!confirmDiscard()) return
+            // Without project storage (tests, failed boot) a template replaces the open project.
+            if (!projectStore() && !confirmDiscard()) return
             setTemplatesOpen(false)
-            newFromTemplate(template)
+            setProjectsOpen(false)
+            newProjectFromTemplate(template).catch((error: unknown) => window.alert(error instanceof Error ? error.message : String(error)))
           }}
         />
       )}
+      {projectsOpen && <ProjectsDialog onClose={() => setProjectsOpen(false)} onNew={() => setTemplatesOpen(true)} />}
     </header>
   )
 }
 
 const fallbackStats = createStore({ fps: 0 })
+
+/** Where the project is saved and whether the last save worked. */
+function SaveStatus() {
+  const storage = useStore(editorStore, (s) => s.storage)
+  if (!storage.kind && storage.state !== 'loading') return null
+  const text =
+    storage.state === 'loading'
+      ? 'Opening…'
+      : storage.state === 'saving'
+        ? 'Saving…'
+        : storage.state === 'error'
+          ? 'Not saved'
+          : storage.kind === 'disk'
+            ? 'Saved to disk'
+            : 'Saved in browser'
+  const where = storage.kind === 'disk' ? `projects/${storage.projectId ?? ''}` : 'this browser (IndexedDB)'
+  return (
+    <span
+      className={`save-status ${storage.state}`}
+      title={storage.state === 'error' ? `Saving failed: ${storage.error}` : `Autosaves to ${where}`}
+      role="status"
+    >
+      {text}
+    </span>
+  )
+}
 
 function confirmDiscard(): boolean {
   return window.confirm('Replace the current project? Export it first if you want to keep it.')

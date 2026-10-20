@@ -9,6 +9,7 @@ import {
   deleteUiElement,
   duplicateEntities,
   editorStore,
+  exportProject,
   pasteClipboard,
   play,
   redo,
@@ -17,6 +18,7 @@ import {
   switchPlayScene,
   undo,
 } from '../editor'
+import { saveNow } from '../projects'
 import { editorCamera, getOrbit } from '../runtime/editorCamera'
 import { createEditScene, sceneView } from '../runtime/editScene'
 import { createPlayScene } from '../runtime/playScene'
@@ -137,6 +139,7 @@ export function Editor() {
             </GameCanvas>
           )}
           <ScriptEditor />
+          <StorageNotice />
         </div>
       </main>
       <Inspector />
@@ -224,4 +227,22 @@ function useWebGPUKit(wanted: boolean): WebGPUKit | null {
     }
   }, [wanted, kit])
   return kit
+}
+
+/** A failed save, or projects still opening: never let either go unnoticed. */
+function StorageNotice() {
+  const storage = useStore(editorStore, (s) => s.storage)
+  if (storage.state === 'loading' && !storage.projectId) return <div className="boot-overlay">Opening project…</div>
+  if (storage.state !== 'error') return null
+  return (
+    <div className="save-banner" role="alert">
+      <strong>Your changes aren't being saved.</strong> {storage.error}
+      <button type="button" onClick={() => void saveNow()}>
+        Try again
+      </button>
+      <button type="button" onClick={exportProject}>
+        Export a copy
+      </button>
+    </div>
+  )
 }
