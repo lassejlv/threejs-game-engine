@@ -5,6 +5,7 @@ import {
   type ComponentKey,
   componentDefaults,
   defaultCollider,
+  defaultComponent,
   type EntityDoc,
   type ParamValue,
   applyOverride,
@@ -63,6 +64,17 @@ export function InstanceInspector({ entity, doc }: { entity: EntityDoc; doc: Pro
       merge(`part.${part!.id}.${key}`),
     )
   const setComponent = <K extends ComponentKey>(key: K, patch: Patch<K>, field: string) => setPart({ [key]: patch } as EntityOverride, `${key}.${field}`)
+  /** Removes a component on this instance only: drops an added one, or hides the prefab's (null). */
+  const removePartComponent = (key: ComponentKey) => {
+    const added = partOverride?.added ?? []
+    if (added.includes(key)) setPart({ [key]: undefined, added: added.filter((k) => k !== key) } as EntityOverride, `remove.${key}`)
+    else setPart({ [key]: null } as EntityOverride, `remove.${key}`)
+  }
+  /** Adds a component on this instance only (or brings back one of the prefab's that was removed here). */
+  const addPartComponent = (key: ComponentKey) => {
+    if (part?.[key] && partOverride?.[key] === null) setPart({ [key]: undefined } as EntityOverride, `add.${key}`)
+    else setPart({ [key]: defaultComponent(key, merged ?? part!), added: [...(partOverride?.added ?? []), key] } as EntityOverride, `add.${key}`)
+  }
   const revertPart = () =>
     updateEntity(id, (e) => {
       const rest = { ...e.overrides }
@@ -152,11 +164,34 @@ export function InstanceInspector({ entity, doc }: { entity: EntityDoc; doc: Pro
             </Section>
           )}
           <div className="override-sections">
-            <ComponentSections entity={merged} doc={doc} setComponent={setComponent} />
+            <ComponentSections entity={merged} doc={doc} setComponent={setComponent} removeComponent={removePartComponent} />
+          </div>
+          <div className="add-component">
+            <select
+              value=""
+              onChange={(e) => {
+                if (e.target.value) addPartComponent(e.target.value as ComponentKey)
+              }}
+              aria-label="Add component to this part"
+            >
+              <option value="">Add Component to this instance…</option>
+              {(Object.keys(COMPONENT_LABELS) as ComponentKey[])
+                .filter((k) => !merged[k])
+                .map((k) => (
+                  <option key={k} value={k}>
+                    {COMPONENT_LABELS[k]}
+                  </option>
+                ))}
+            </select>
           </div>
           {partOverride && (
             <p className="hint">
-              Overridden here: {Object.keys(partOverride).join(', ')}. Everything else follows the prefab.
+              Overridden here:{' '}
+              {Object.entries(partOverride)
+                .filter(([key, value]) => key !== 'added' && value !== undefined)
+                .map(([key, value]) => (value === null ? `${key} (removed)` : partOverride.added?.includes(key as ComponentKey) ? `${key} (added)` : key))
+                .join(', ')}
+              . Everything else follows the prefab.
             </p>
           )}
         </>

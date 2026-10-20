@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applyOverride,
   assetReferences,
   componentDefaults as defaults,
   createUiElement,
@@ -162,5 +163,23 @@ describe('compileScript', () => {
     // An instance of the variant can override again, keyed by the variant's own parts.
     const instance = instantiatePrefab(variant, { overrides: { [variant.entities[0].id]: { mesh: { color: '#ffffff' } } } })
     expect(expandEntities([instance], prefabs)[0].mesh?.color).toBe('#ffffff')
+  })
+
+  it('applies component overrides: patch, add and remove on one instance', () => {
+    const part = createEntity('Crate', { mesh: componentDefaults.mesh(), collider: componentDefaults.collider() })
+    const out = applyOverride(
+      part,
+      { mesh: { color: '#ff0000' }, collider: null, light: { intensity: 3 }, added: ['light'] },
+      false,
+    )
+    expect(out.mesh!.color).toBe('#ff0000')
+    expect(out.collider).toBeUndefined()
+    expect(out.light).toMatchObject({ ...componentDefaults.light(), intensity: 3 })
+    expect(part.collider).toBeDefined() // the prefab's part itself is untouched
+  })
+
+  it('ignores a patch for a component the part no longer has (files from before add/remove keep their meaning)', () => {
+    const part = createEntity('Crate', { mesh: componentDefaults.mesh() })
+    expect(applyOverride(part, { light: { intensity: 3 } }, false).light).toBeUndefined()
   })
 })

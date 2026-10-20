@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { componentDefaults, createEntity } from '../document'
+import { componentDefaults, createEntity, expandEntities } from '../document'
 import { addEntity, createPrefab, editorStore, endTransaction, newProject, select, undo } from '../editor'
 import { Inspector } from './Inspector'
 
@@ -78,6 +78,33 @@ describe('Inspector', () => {
 
     act(() => fireEvent.click(screen.getByRole('button', { name: 'Revert this part' })))
     expect(byName('Ground').overrides).toBeUndefined()
+  })
+
+  it('adds and removes components on one prefab instance only', () => {
+    act(() => createPrefab(byName('Ground').id))
+    const partId = s().doc.prefabs[0].entities[0].id
+    act(() => select(byName('Ground').id))
+    render(<Inspector />)
+
+    // Remove the prefab's collider on this instance.
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Remove Collider' })))
+    expect(byName('Ground').overrides?.[partId]?.collider).toBeNull()
+    // The instance as the game sees it: the prefab with this instance's overrides applied.
+    const expanded = () => expandEntities(entities(), s().doc.prefabs).find((e) => e.name === 'Ground')!
+    expect(expanded().collider).toBeUndefined()
+
+    // Add a light that the prefab doesn't have.
+    act(() => fireEvent.change(screen.getByLabelText('Add component to this part'), { target: { value: 'light' } }))
+    expect(byName('Ground').overrides?.[partId]?.added).toEqual(['light'])
+    expect(expanded().light).toBeDefined()
+    expect(screen.getByText(/collider \(removed\), light \(added\)/)).toBeTruthy()
+
+    // The prefab itself is unchanged, and removing the added light takes it out of the override.
+    expect(s().doc.prefabs[0].entities[0].collider).toBeDefined()
+    expect(s().doc.prefabs[0].entities[0].light).toBeUndefined()
+    act(() => fireEvent.click(screen.getByRole('button', { name: 'Remove Light' })))
+    expect(byName('Ground').overrides?.[partId]?.added).toEqual([])
+    expect(expanded().light).toBeUndefined()
   })
 
   it('shows scene settings when nothing is selected, and edits them', () => {

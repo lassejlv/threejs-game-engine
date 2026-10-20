@@ -305,10 +305,16 @@ export interface EntityDoc {
 }
 
 /** Field changes a prefab instance makes to one entity of its prefab. */
-export type EntityOverride = { [K in ComponentKey]?: Partial<NonNullable<EntityDoc[K]>> } & {
+/**
+ * One instance's changes to one prefab part. A component patch changes fields
+ * of a component the part has; `null` removes that component on this instance;
+ * components listed in `added` are added (their value is the whole component).
+ */
+export type EntityOverride = { [K in ComponentKey]?: Partial<NonNullable<EntityDoc[K]>> | null } & {
   name?: string
   active?: boolean
   transform?: TransformDoc
+  added?: ComponentKey[]
 }
 
 export interface ScriptDoc {

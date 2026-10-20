@@ -43,6 +43,9 @@ jobs:
     env:
       E2E_BROWSER: ${{ matrix.browser }}
       LIBGL_ALWAYS_SOFTWARE: '1'
+      # Headless Firefox has no WebGL on Linux; run it headed on a virtual display instead.
+      E2E_HEADED: ${{ matrix.browser == 'firefox' && '1' || '' }}
+      RUN: ${{ matrix.browser == 'firefox' && 'xvfb-run -a' || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,9 +62,9 @@ jobs:
         if: matrix.browser == 'firefox'
         run: sudo apt-get install -y --no-install-recommends libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libegl1
       - name: Smoke test (editor, play, context loss, draw-call budget)
-        run: npm run test:e2e
+        run: $RUN npm run test:e2e
       - name: Export test (every template exported and played)
-        run: npm run test:exports
+        run: $RUN npm run test:exports
       - name: Upload screenshots and exported games
         if: always()
         uses: actions/upload-artifact@v4

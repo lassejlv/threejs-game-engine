@@ -79,7 +79,7 @@ Every edit autosaves. **File → Export project** writes a `.zip` bundle (the sa
 ### Prefabs and scenes
 
 Select an entity and click the prefab button in the Hierarchy. The subtree becomes a prefab, and the entity becomes an instance of it. Changes made to the prefab (Project → click a prefab) apply to every instance.
-An instance keeps its own transform, name and script parameters, and can override any component field on any part of the prefab (overridden parts are marked •; revert a part or everything). **Unpack** turns an instance back into plain entities.
+An instance keeps its own transform, name and script parameters, and can override any component field on any part of the prefab, or add and remove components on just that instance (overridden parts are marked •; revert a part or everything). **Unpack** turns an instance back into plain entities.
 **Variant** creates a prefab based on another one: it follows the base and changes only what it overrides. Prefabs can contain other prefabs. A project can have several scenes; the start scene is where an exported game begins.
 
 ### Screen UI
@@ -193,7 +193,6 @@ Performance:
 ## Known limits
 
 - Joint frames are taken from the bodies' poses when play starts; joints can't be added or retargeted while playing.
-- Prefab overrides change fields of components a part already has; they can't add or remove components (use a variant and edit it).
 - LOD levels and blended animation states apply to static models and the model's own clips; LOD levels don't animate.
 - Navigation is a grid baked once per scene from static colliders; moving obstacles aren't avoided.
 - Export compression doesn't recompress textures embedded inside .glb files.
