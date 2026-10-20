@@ -31,6 +31,17 @@ async function level(boxes: { at: [number, number, number]; half: [number, numbe
 
 const bounds = (half: number, low = -1, high = 6) => ({ min: new Vector3(-half, low, -half), max: new Vector3(half, high, half) })
 const length = (path: Vector3[]) => path.slice(1).reduce((sum, p, i) => sum + p.distanceTo(path[i]), 0)
+/** Whether a path's segments pass through a box (seen from above, 10 cm steps). */
+function crosses(path: Vector3[], box: { min: Vector3; max: Vector3 }) {
+  for (let k = 1; k < path.length; k++) {
+    const steps = Math.ceil(path[k].distanceTo(path[k - 1]) / 0.1)
+    for (let s = 0; s <= steps; s++) {
+      const p = path[k - 1].clone().lerp(path[k], s / steps)
+      if (p.x > box.min.x && p.x < box.max.x && p.z > box.min.z && p.z < box.max.z) return true
+    }
+  }
+  return false
+}
 
 describe('NavGrid', () => {
   it('walks straight across open ground', async () => {
@@ -40,6 +51,41 @@ describe('NavGrid', () => {
     expect(path).not.toBeNull()
     expect(path.length).toBe(2) // straightened to one segment
     expect(path[0].y).toBeCloseTo(0, 1)
+  })
+
+  it('goes around moving obstacles while they are there', async () => {
+    const physics = await level([{ at: [0, -0.5, 0], half: [10, 0.5, 10] }])
+    const grid = NavGrid.bake(physics.navQueries(), bounds(10))
+    const from = new Vector3(-8, 0, 0)
+    const to = new Vector3(8, 0, 0)
+    const straight = grid.findPath(from, to)!
+    // A crate rolls into the way: x -1..1, z -3..3, 2 m tall.
+    const crate = { min: new Vector3(-1, 0, -3), max: new Vector3(1, 2, 3) }
+    expect(grid.setObstacles([crate])).toBe(true)
+    expect(grid.setObstacles([crate])).toBe(false) // nothing moved
+    expect(crosses(straight, crate)).toBe(true)
+    const around = grid.findPath(from, to)!
+    expect(crosses(around, crate)).toBe(false)
+    expect(length(around)).toBeGreaterThan(length(straight) + 1)
+    // Something no taller than a step doesn't block.
+    grid.setObstacles([{ min: new Vector3(-1, 0, -3), max: new Vector3(1, 0.3, 3) }])
+    expect(grid.findPath(from, to)!.length).toBe(2)
+    // When the crate leaves, the straight path is back.
+    grid.setObstacles([crate])
+    expect(grid.setObstacles([])).toBe(true)
+    expect(grid.findPath(from, to)!.length).toBe(2)
+  })
+
+  it('still finds a path through an obstacle that closes the only way', async () => {
+    const physics = await level([
+      { at: [0, -0.5, 0], half: [10, 0.5, 10] },
+      { at: [0, 1.5, -2], half: [0.25, 1.5, 8] }, // wall with a gap at z 6..10
+    ])
+    const grid = NavGrid.bake(physics.navQueries(), bounds(10))
+    grid.setObstacles([{ min: new Vector3(-1, 0, 6), max: new Vector3(1, 2, 10) }])
+    // The agent heads for the gap and waits there (physics stops it) rather than giving up.
+    const path = grid.findPath(new Vector3(-5, 0, 0), new Vector3(5, 0, 0))
+    expect(path).not.toBeNull()
   })
 
   it('routes around a wall through its gap', async () => {

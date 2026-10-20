@@ -325,7 +325,7 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
             lines.geometry.setAttribute('position', new BufferAttribute(vertices, 3))
             lines.geometry.setAttribute('color', new BufferAttribute(colors, 4))
             const nav = session.navigation.debugPoints()
-            if (nav && navPoints.geometry.getAttribute('position')?.count !== nav.length / 3) {
+            if (nav && (navPoints.geometry.getAttribute('position') as BufferAttribute | undefined)?.array !== nav) {
               navPoints.geometry.setAttribute('position', new BufferAttribute(nav, 3))
             }
           },

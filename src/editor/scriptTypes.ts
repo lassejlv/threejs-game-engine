@@ -157,7 +157,7 @@ declare module 'engine' {
   interface Nav {
     /** Walkable waypoints between two points, or null if unreachable. The grid is baked from static colliders on first use. */
     findPath(from: Vec3Like, to: Vec3Like): T3.Vector3[] | null
-    /** Walks this entity to a point, or keeps following a moving entity. Returns false if there's no path. */
+    /** Walks this entity to a point, or keeps following a moving entity, steering around moving bodies on the way. Returns false if there's no path. */
     moveTo(target: Vec3Like | Handle, options?: { speed?: number; stoppingDistance?: number; face?: boolean }): boolean
     stop(): void
     readonly moving: boolean
@@ -194,7 +194,7 @@ declare module 'engine' {
     readonly particles: Particles | undefined
     /** Present when the entity has a Sprite: flipX, frame, fps (sheet animation) and color. */
     readonly sprite: { flipX: boolean; frame: number; fps: number; color: string } | undefined
-    /** Pathfinding over the scene's static colliders. */
+    /** Pathfinding over the scene's static colliders, around moving bodies. */
     readonly nav: Nav
     /** Background music that keeps playing (or cross-fades) across scenes. */
     readonly music: {

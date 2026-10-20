@@ -1,6 +1,18 @@
 import { Object3D, Vector3 } from 'three'
 import { describe, expect, it } from 'vitest'
-import { boxCollider, Collider, defaultNavSettings, type Engine, EventBus, loadRapier, RapierPhysics, Transform, World } from '../../engine'
+import {
+  boxCollider,
+  Collider,
+  defaultNavSettings,
+  type Engine,
+  EventBus,
+  loadRapier,
+  RapierPhysics,
+  RigidBody,
+  rigidBody,
+  Transform,
+  World,
+} from '../../engine'
 import type { Handle } from '../scripting'
 import { Navigation } from './navigation'
 
@@ -32,7 +44,19 @@ async function setup() {
   const run = (seconds: number) => {
     for (let t = 0; t < seconds; t += 1 / 60) navigation.update(1 / 60)
   }
-  return { navigation, walker, run }
+  /** A kinematic box (a moving obstacle), added after the grid was baked. */
+  const crate = (at: [number, number, number], half: [number, number, number]) => {
+    const object = new Object3D()
+    object.position.set(...at)
+    object.updateMatrixWorld()
+    const entity = engine.world.create()
+    engine.world.add(entity, Transform, object)
+    engine.world.add(entity, RigidBody, rigidBody(object, { kinematic: true }))
+    engine.world.add(entity, Collider, boxCollider(...half))
+    physics.flush()
+    return entity
+  }
+  return { engine, navigation, walker, run, crate }
 }
 
 describe('Navigation', () => {
@@ -50,6 +74,30 @@ describe('Navigation', () => {
     expect(crossedGap).toBe(true)
     expect(guard.object.position.distanceTo(new Vector3(5, 0.5, -5))).toBeLessThan(0.6)
     expect(api.moving).toBe(false)
+  })
+
+  it('steers around a moving obstacle that blocks the path, and goes straight once it leaves', async () => {
+    const { engine, navigation, walker, run, crate } = await setup()
+    const guard = walker(-8, -5)
+    const api = navigation.api(guard)
+    api.moveTo({ x: -2, y: 0, z: -5 }, { speed: 3 })
+    expect(api.path.length).toBe(1) // straight ahead
+    const box = crate([-5, 1, -5], [0.5, 1, 1.5])
+    let touched = false
+    for (let t = 0; t < 6; t += 1 / 60) {
+      run(1 / 60)
+      const p = guard.object.position
+      if (Math.abs(p.x + 5) < 0.6 && Math.abs(p.z + 5) < 1.6) touched = true
+    }
+    expect(touched).toBe(false)
+    expect(guard.object.position.distanceTo(new Vector3(-2, 0.5, -5))).toBeLessThan(0.6)
+
+    // Once the crate is gone, nothing is in the way any more.
+    engine.world.destroy(box)
+    engine.world.flush()
+    api.moveTo({ x: -8, y: 0, z: -5 })
+    run(0.5)
+    expect(api.path.length).toBe(1)
   })
 
   it('reports unreachable goals', async () => {

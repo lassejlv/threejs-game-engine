@@ -39,6 +39,8 @@ interface NavNode {
 }
 
 const MAX_LAYERS = 4
+/** Extra path cost (meters) for walking through a node a moving obstacle covers: avoided when there's a way around. */
+const BLOCKED_COST = 25
 
 /**
  * A walkable grid baked from static geometry: every cell column can hold
@@ -52,6 +54,8 @@ export class NavGrid {
   private readonly cols: number
   private readonly rows: number
   private readonly origin: Vector3
+  /** Nodes covered by moving obstacles, from the last setObstacles call. */
+  private blocked = new Set<number>()
 
   private constructor(
     readonly settings: NavSettings,
@@ -110,6 +114,38 @@ export class NavGrid {
     if (!raw) return null
     const points = raw.map((i) => new Vector3(this.nodes[i].x, this.nodes[i].y, this.nodes[i].z))
     return this.straighten(points)
+  }
+
+  /**
+   * Marks the nodes that moving obstacles (world-space boxes) cover, grown by the agent
+   * radius. Paths go around them when they can. Returns whether the covered nodes changed.
+   */
+  setObstacles(boxes: readonly NavBounds[]): boolean {
+    const { cellSize, agentRadius, agentHeight, maxStep } = this.settings
+    const next = new Set<number>()
+    for (const { min, max } of boxes) {
+      const i0 = Math.floor((min.x - agentRadius - this.origin.x) / cellSize)
+      const i1 = Math.floor((max.x + agentRadius - this.origin.x) / cellSize)
+      const j0 = Math.floor((min.z - agentRadius - this.origin.z) / cellSize)
+      const j1 = Math.floor((max.z + agentRadius - this.origin.z) / cellSize)
+      for (let j = Math.max(0, j0); j <= Math.min(this.rows - 1, j1); j++) {
+        for (let i = Math.max(0, i0); i <= Math.min(this.cols - 1, i1); i++) {
+          for (const index of this.columns.get(this.cell(i, j)) ?? []) {
+            const y = this.nodes[index].y
+            // In the way: taller than a step above this floor, and lower than the agent's head.
+            if (max.y > y + maxStep && min.y < y + agentHeight) next.add(index)
+          }
+        }
+      }
+    }
+    const changed = next.size !== this.blocked.size || [...next].some((i) => !this.blocked.has(i))
+    this.blocked = next
+    return changed
+  }
+
+  /** Whether a moving obstacle covers this node (for the debug view). */
+  isBlocked(node: number): boolean {
+    return this.blocked.has(node)
   }
 
   /** A random walkable point (optionally within `radius` of `around`). */
@@ -222,7 +258,7 @@ export class NavGrid {
       for (const next of a.links) {
         if (closed.has(next)) continue
         const b = nodes[next]
-        const cost = g.get(current)! + Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
+        const cost = g.get(current)! + Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) + (this.blocked.has(next) ? BLOCKED_COST : 0)
         if (cost < (g.get(next) ?? Infinity)) {
           g.set(next, cost)
           came.set(next, current)
@@ -268,6 +304,7 @@ export class NavGrid {
         }
       }
       if (!found) return false
+      if (this.blocked.size > 0 && this.columns.get(this.cell(i, j))!.some((n) => this.blocked.has(n) && this.nodes[n].y === y)) return false
       // Also stay clear of neighboring holes so agents don't clip edges.
       if (!this.stepTo(i + 1, j, y) || !this.stepTo(i - 1, j, y) || !this.stepTo(i, j + 1, y) || !this.stepTo(i, j - 1, y)) return false
     }

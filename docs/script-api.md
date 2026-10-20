@@ -82,7 +82,7 @@ The `ctx` every hook receives: the entity it runs on plus the engine services. A
 - **`sprite`** — `readonly sprite: { flipX: boolean; frame: number; fps: number; color: string } | undefined`
   Present when the entity has a Sprite: flipX, frame, fps (sheet animation) and color.
 - **`nav`** — `readonly nav: Nav`
-  Pathfinding over the scene's static colliders.
+  Pathfinding over the scene's static colliders, around moving bodies.
 - **`music`** — `readonly music: { play(asset: string, options?: { fade?: number; volume?: number; loop?: boolean }): void stop(fade?: number): void readonly current: string | null }`
   Background music that keeps playing (or cross-fades) across scenes.
 - **`volume`** — `readonly volume: { set(group: 'master' | 'music' | 'sfx', value: number): void; get(group: 'master' | 'music' | 'sfx'): number }`
@@ -226,7 +226,7 @@ Options for `ctx.physics.connect`; the same fields as the Joint component.
 - **`findPath`** — `findPath(from: Vec3Like, to: Vec3Like): T3.Vector3[] | null`
   Walkable waypoints between two points, or null if unreachable. The grid is baked from static colliders on first use.
 - **`moveTo`** — `moveTo(target: Vec3Like | Handle, options?: { speed?: number; stoppingDistance?: number; face?: boolean }): boolean`
-  Walks this entity to a point, or keeps following a moving entity. Returns false if there's no path.
+  Walks this entity to a point, or keeps following a moving entity, steering around moving bodies on the way. Returns false if there's no path.
 - **`stop`** — `stop(): void`
 - **`moving`** — `readonly moving: boolean`
 - **`path`** — `readonly path: readonly T3.Vector3[]`

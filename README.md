@@ -123,7 +123,7 @@ export default {
 | `emit(name, data)`, `on(name, fn)` | events between scripts |
 | `save(key, value)`, `load(key, fallback)` | data that survives reloads (per project) |
 | `physics.raycast / sphereCast / overlap`, `applyImpulse / addForce / addTorque / setAngularVelocity` | Rapier queries and forces |
-| `nav.moveTo(point or entity)`, `nav.findPath`, `nav.randomPoint` | pathfinding on a grid baked from static colliders |
+| `nav.moveTo(point or entity)`, `nav.findPath`, `nav.randomPoint` | pathfinding on a grid baked from static colliders, around moving bodies |
 | `ui.text / button / bar / image / label`, `hud.set / message` | in-game UI (DOM overlay) |
 | `sound.play(asset)`, `sound.tone(freq)`, `audio.play()`, `music.play(asset)`, `volume.set(group, v)` | one-shots, a built-in synth, the entity's Audio Source, cross-fading music, master/music/sfx volume |
 | `animation.play(clip or state)`, `animation.set(param, v)`, `animation.trigger(name)` | glTF animation and its state machine |
@@ -193,5 +193,5 @@ Performance:
 ## Known limits
 
 - LOD levels and blended animation states apply to static models and the model's own clips; LOD levels don't animate.
-- Navigation is a grid baked once per scene from static colliders; moving obstacles aren't avoided.
+- Navigation is a grid baked once per scene from static colliders. Moving bodies are steered around (re-planned four times a second), but agents don't avoid each other.
 - Export compression doesn't recompress textures embedded inside .glb files.

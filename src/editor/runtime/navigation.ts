@@ -15,7 +15,7 @@ export interface MoveOptions {
 export interface NavApi {
   /** Walkable waypoints from one point to another (snapped to the navigation grid), or null if unreachable. */
   findPath(from: Vector3Like, to: Vector3Like): Vector3[] | null
-  /** Walks this entity to a point, or keeps following a moving entity. Returns false when no path exists. */
+  /** Walks this entity to a point, or keeps following a moving entity, steering around moving bodies. Returns false when no path exists. */
   moveTo(target: Vector3Like | Handle, options?: MoveOptions): boolean
   stop(): void
   /** True while following a path. */
@@ -38,15 +38,21 @@ interface Agent {
   repath: number
   /** Height of the entity's origin above the floor when it started, kept while walking (body-less entities). */
   foot: number
+  /** Where a moveTo to a point is headed (for re-planning around obstacles). */
+  goal: Vector3
 }
 
 const REPATH_INTERVAL = 0.5
+/** How often moving obstacles are looked up (seconds). */
+const OBSTACLE_INTERVAL = 0.25
 const toward = new Vector3()
 
 /** Bakes the grid on first use and walks agents along their paths every fixed step. */
 export class Navigation {
   private grid: NavGrid | null = null
   private readonly agents = new Map<Entity, Agent>()
+  private obstacleTimer = 0
+  private debugCache: Float32Array | null = null
 
   constructor(
     private readonly physics: RapierPhysics,
@@ -96,6 +102,11 @@ export class Navigation {
 
   /** Steps every agent (fixed rate, before physics). */
   update(dt: number): void {
+    this.obstacleTimer -= dt
+    if (this.grid && this.obstacleTimer <= 0) {
+      this.obstacleTimer = OBSTACLE_INTERVAL
+      this.avoidObstacles(this.grid)
+    }
     for (const [entity, agent] of this.agents) {
       if (!this.isAlive(entity)) {
         this.agents.delete(entity)
@@ -120,12 +131,39 @@ export class Navigation {
     }
   }
 
-  /** Grid nodes as points (x, y, z...), for the debug view. */
+  /** Tells the grid where moving bodies are; when that changes, agents plan again (around them, or straighter once they've gone). */
+  private avoidObstacles(grid: NavGrid): void {
+    // Agents don't block themselves, and a chased entity doesn't block the way to itself.
+    const ignore = new Set<Entity>()
+    for (const [entity, agent] of this.agents) {
+      ignore.add(entity)
+      if (agent.chase) ignore.add(agent.chase.entity)
+    }
+    if (!grid.setObstacles(this.physics.movingObstacles(ignore))) return
+    this.debugCache = null
+    for (const agent of this.agents.values()) {
+      if (agent.chase) {
+        agent.repath = 0
+        continue
+      }
+      const path = grid.findPath(this.position(agent.handle), agent.goal)
+      if (path) {
+        agent.path = path
+        agent.index = 1
+      }
+    }
+  }
+
+  /** Walkable grid nodes as points (x, y, z...), for the debug view; nodes moving obstacles cover are left out. */
   debugPoints(): Float32Array | null {
-    if (!this.grid) return null
-    const out = new Float32Array(this.grid.nodes.length * 3)
-    this.grid.nodes.forEach((n, i) => out.set([n.x, n.y + 0.05, n.z], i * 3))
-    return out
+    const grid = this.grid
+    if (!grid || this.debugCache) return this.debugCache
+    const out: number[] = []
+    grid.nodes.forEach((n, i) => {
+      if (!grid.isBlocked(i)) out.push(n.x, n.y + 0.05, n.z)
+    })
+    this.debugCache = new Float32Array(out)
+    return this.debugCache
   }
 
   private moveTo(handle: Handle, target: Vector3Like | Handle, options: MoveOptions): boolean {
@@ -146,6 +184,7 @@ export class Navigation {
       chase,
       repath: REPATH_INTERVAL,
       foot: this.position(handle).y - path[0].y,
+      goal,
     })
     return true
   }

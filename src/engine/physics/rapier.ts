@@ -315,6 +315,26 @@ export class RapierPhysics {
     return box.isEmpty() ? null : { min: box.min, max: box.max }
   }
 
+  /**
+   * World bounds of every moving (dynamic or kinematic), solid body's collider, for
+   * navigation to steer around. Characters and `exclude` (usually the agents) are left out.
+   */
+  movingObstacles(exclude?: ReadonlySet<Entity>): (NavBounds & { entity: Entity })[] {
+    const out: (NavBounds & { entity: Entity })[] = []
+    const pose = new Matrix4()
+    for (const [entity, record] of this.bodies) {
+      if (!record.collider || exclude?.has(entity)) continue
+      const shape = this.engine.world.tryGet(entity, Collider)
+      if (!shape || shape.trigger || this.engine.world.tryGet(entity, RigidBody)?.character) continue
+      const box = new Box3(shape.halfExtents.clone().negate(), shape.halfExtents.clone())
+      const t = record.collider.translation()
+      const r = record.collider.rotation()
+      box.applyMatrix4(pose.compose(position.set(t.x, t.y, t.z), quaternion.set(r.x, r.y, r.z, r.w), scale.set(1, 1, 1)))
+      out.push({ entity, min: box.min, max: box.max })
+    }
+    return out
+  }
+
   debugLines(): DebugLines {
     const { vertices, colors } = this.world.debugRender()
     return { vertices, colors }
