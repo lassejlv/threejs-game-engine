@@ -1,5 +1,15 @@
-import { Audio, type AudioListener, Object3D, PositionalAudio } from 'three'
-import { defaultNavSettings, defineComponent, type Engine, type Entity, type NavSettings, type RapierPhysics, type System } from '../../engine'
+import { Audio, type AudioListener, Object3D, PositionalAudio, Vector3 } from 'three'
+import {
+  defaultNavSettings,
+  defineComponent,
+  type Engine,
+  type Entity,
+  Joint,
+  type NavSettings,
+  type RapierPhysics,
+  RigidBody,
+  type System,
+} from '../../engine'
 import { log } from '../console'
 import type { Animator } from './animator'
 import type { ParticleEmitter } from './particles'
@@ -9,7 +19,8 @@ import { Navigation } from './navigation'
 import { drawUiElement, isLive } from './sceneUi'
 import { Timers } from './timers'
 import { GameUi } from './gameUi'
-import type { EntityDoc, ParamValue, ProjectDoc, UiElementDoc } from '../document'
+import { componentDefaults, type EntityDoc, type ParamValue, type ProjectDoc, type UiElementDoc } from '../document'
+import { jointData } from './joints'
 import {
   type AudioSourceApi,
   type Behavior,
@@ -306,6 +317,25 @@ export class PlaySession {
         })
         const target = hit && this.handles.get(hit.entity)
         return hit && target ? { handle: target, point: hit.point, normal: hit.normal, distance: hit.distance } : null
+      },
+      connect: (body, target, options = {}) => {
+        const world = this.engine.world
+        const missing = [body, target].find((h) => h && !world.has(h.entity, RigidBody))
+        if (missing) return log('warn', `${prefix} physics.connect: "${missing.name}" has no Rigid Body`)
+        const { limits, anchor, axis, ...rest } = options
+        const doc = {
+          ...componentDefaults.joint(),
+          type: 'fixed' as const,
+          ...rest,
+          target: null,
+          ...(anchor && { anchor: [anchor.x, anchor.y, anchor.z] as [number, number, number] }),
+          ...(axis && { axis: [axis.x, axis.y, axis.z] as [number, number, number] }),
+          ...(limits && { limits: true, min: limits[0], max: limits[1] }),
+        }
+        world.add(body.entity, Joint, jointData(doc, target?.entity ?? null, body.object.getWorldScale(new Vector3())))
+      },
+      disconnect: (body) => {
+        if (this.engine.world.has(body.entity, Joint)) this.engine.world.remove(body.entity, Joint)
       },
     }
     return {

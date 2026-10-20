@@ -73,7 +73,7 @@ Every edit autosaves. **File → Export project** writes a `.zip` bundle (the sa
 - Particle Emitter: rate per second and per meter (trails), burst and duration, point/sphere/box shapes, spread, gravity, drag, size and opacity curves, color over life, spin, sprite sheets, additive or normal (sorted) blending, world or local space, and sub-emitters that fire where a parent's particles spawn or die. **Auto destroy** makes one-shot effects you can `spawn`
 - Rigid Body: dynamic, kinematic or character; **2D** locks it to the XY plane
 - Collider: box, sphere, capsule, cylinder, exact mesh or convex hull (built from the mesh or model); trigger option; a physics layer
-- Joint: hinge, ball, fixed, slider or spring to another body or the world, with limits and motors
+- Joint: hinge, ball, fixed, slider or spring to another body or the world, with limits and motors; scripts can add, replace and remove joints while playing (`ctx.physics.connect` / `disconnect`)
 - Scripts
 
 ### Prefabs and scenes
@@ -192,7 +192,6 @@ Performance:
 
 ## Known limits
 
-- Joint frames are taken from the bodies' poses when play starts; joints can't be added or retargeted while playing.
 - LOD levels and blended animation states apply to static models and the model's own clips; LOD levels don't animate.
 - Navigation is a grid baked once per scene from static colliders; moving obstacles aren't avoided.
 - Export compression doesn't recompress textures embedded inside .glb files.

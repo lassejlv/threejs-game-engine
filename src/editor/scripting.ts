@@ -61,6 +61,32 @@ export interface PhysicsApi {
     maxDistance?: number,
     options?: { triggers?: boolean; ignoreSelf?: boolean },
   ): PhysicsHit | null
+  /**
+   * Joins body's rigid body to target's (or to a fixed point in the world when null),
+   * from where they are now. Replaces any joint body already has.
+   */
+  connect(body: Handle, target: Handle | null, options?: JointOptions): void
+  /** Removes the joint connect (or the Joint component) gave body. */
+  disconnect(body: Handle): void
+}
+
+/** Options for `ctx.physics.connect`, matching the Joint component's fields. */
+export interface JointOptions {
+  /** Default 'fixed'. */
+  type?: 'fixed' | 'hinge' | 'ball' | 'slider' | 'spring'
+  /** Joint point relative to body (local units, before scale). Default its origin. */
+  anchor?: THREE.Vector3Like
+  /** Hinge/slider axis in body's local space. Default up. */
+  axis?: THREE.Vector3Like
+  /** Hinge: degrees. Slider: meters. Default none. */
+  limits?: [min: number, max: number] | null
+  /** Spring: rest length in meters; -1 (default) = the current distance. */
+  restLength?: number
+  stiffness?: number
+  damping?: number
+  /** Hinge (degrees/s) or slider (m/s) motor speed. */
+  motorSpeed?: number
+  motorStrength?: number
 }
 
 export interface SoundApi {

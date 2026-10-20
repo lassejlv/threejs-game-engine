@@ -30,6 +30,7 @@ Scripts also get `THREE` (three.js) and `helpers` (`damp`, `dampAngle`, `moveTow
 - [Time](#time)
 - [Physics](#physics)
 - [PhysicsHit](#physicshit)
+- [JointOptions](#jointoptions)
 - [Nav](#nav)
 - [Animation](#animation)
 - [Particles](#particles)
@@ -168,7 +169,7 @@ An entity as scripts see it (also what `find`, `spawn` and collision hooks give 
 
 ## Physics
 
-`ctx.physics`: queries and forces.
+`ctx.physics`: queries, forces and joints.
 
 - **`raycast`** — `raycast(origin: T3.Vector3, direction: T3.Vector3, maxDistance?: number, options?: { triggers?: boolean; ignoreSelf?: boolean }): PhysicsHit | null`
 - **`applyImpulse`** — `applyImpulse(target: Handle, impulse: T3.Vector3): void`
@@ -184,6 +185,10 @@ An entity as scripts see it (also what `find`, `spawn` and collision hooks give 
   Entities touching a sphere (radius) or box (half extents) at a point.
 - **`sphereCast`** — `sphereCast(origin: T3.Vector3, radius: number, direction: T3.Vector3, maxDistance?: number, options?: { triggers?: boolean; ignoreSelf?: boolean }): PhysicsHit | null`
   A raycast with thickness.
+- **`connect`** — `connect(body: Handle, target: Handle | null, options?: JointOptions): void`
+  Joins body's rigid body to target's (or a fixed point in the world when null), from where they are now. Replaces any joint body already has.
+- **`disconnect`** — `disconnect(body: Handle): void`
+  Removes body's joint.
 
 ## PhysicsHit
 
@@ -193,6 +198,26 @@ A raycast or sphere-cast result.
 - **`point`** — `point: T3.Vector3`
 - **`normal`** — `normal: T3.Vector3`
 - **`distance`** — `distance: number`
+
+## JointOptions
+
+Options for `ctx.physics.connect`; the same fields as the Joint component.
+
+- **`type`** — `type?: 'fixed' | 'hinge' | 'ball' | 'slider' | 'spring'`
+  Default 'fixed'.
+- **`anchor`** — `anchor?: Vec3Like`
+  Joint point relative to body (local units). Default its origin.
+- **`axis`** — `axis?: Vec3Like`
+  Hinge/slider axis in body's local space. Default up.
+- **`limits`** — `limits?: [number, number] | null`
+  Hinge: degrees. Slider: meters.
+- **`restLength`** — `restLength?: number`
+  Spring: rest length in meters; -1 (default) = the current distance.
+- **`stiffness`** — `stiffness?: number`
+- **`damping`** — `damping?: number`
+- **`motorSpeed`** — `motorSpeed?: number`
+  Hinge (degrees/s) or slider (m/s).
+- **`motorStrength`** — `motorStrength?: number`
 
 ## Nav
 

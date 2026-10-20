@@ -93,6 +93,28 @@ declare module 'engine' {
     overlap(center: T3.Vector3, size: number | T3.Vector3, options?: { triggers?: boolean; ignoreSelf?: boolean }): Handle[]
     /** A raycast with thickness. */
     sphereCast(origin: T3.Vector3, radius: number, direction: T3.Vector3, maxDistance?: number, options?: { triggers?: boolean; ignoreSelf?: boolean }): PhysicsHit | null
+    /** Joins body's rigid body to target's (or a fixed point in the world when null), from where they are now. Replaces any joint body already has. */
+    connect(body: Handle, target: Handle | null, options?: JointOptions): void
+    /** Removes body's joint. */
+    disconnect(body: Handle): void
+  }
+
+  interface JointOptions {
+    /** Default 'fixed'. */
+    type?: 'fixed' | 'hinge' | 'ball' | 'slider' | 'spring'
+    /** Joint point relative to body (local units). Default its origin. */
+    anchor?: Vec3Like
+    /** Hinge/slider axis in body's local space. Default up. */
+    axis?: Vec3Like
+    /** Hinge: degrees. Slider: meters. */
+    limits?: [number, number] | null
+    /** Spring: rest length in meters; -1 (default) = the current distance. */
+    restLength?: number
+    stiffness?: number
+    damping?: number
+    /** Hinge (degrees/s) or slider (m/s). */
+    motorSpeed?: number
+    motorStrength?: number
   }
 
   interface Sound {

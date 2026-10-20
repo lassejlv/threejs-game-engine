@@ -153,6 +153,25 @@ describe('RapierPhysics', () => {
     expect(pa.distanceTo(pb)).toBeCloseTo(1, 1)
   })
 
+  it('applies joints added and removed while the simulation runs', async () => {
+    const { engine, run } = await setup()
+    const crate = spawn(engine, [0, 5, 0])
+    engine.world.add(crate.entity, RigidBody, rigidBody(crate.object))
+    engine.world.add(crate.entity, Collider, sphereCollider(0.3))
+    run(10)
+    const body = engine.world.get(crate.entity, RigidBody)
+    const caught = body.position.y
+    expect(caught).toBeLessThan(5) // falling
+    // Pinned to the world where it is now, it stops falling...
+    engine.world.add(crate.entity, Joint, joint('fixed', null))
+    run(30)
+    expect(body.position.y).toBeCloseTo(caught, 1)
+    // ...and falls again once released.
+    engine.world.remove(crate.entity, Joint)
+    run(30)
+    expect(body.position.y).toBeLessThan(caught - 0.5)
+  })
+
   it('collides with triangle-mesh and convex shapes', async () => {
     const { engine, run } = await setup()
     const floor = spawn(engine, [0, 0, 0])

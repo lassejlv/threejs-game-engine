@@ -19,7 +19,6 @@ import {
   cylinderCollider,
   heightfieldCollider,
   Joint,
-  joint,
   meshCollider,
   defineScene,
   type Engine,
@@ -44,7 +43,6 @@ import {
   type EntityDoc,
   expandEntities,
   instantiatePrefab,
-  type JointDoc,
   type ProjectDoc,
   type ProjectSettings,
 } from '../document'
@@ -53,6 +51,7 @@ import { assetsIdle, Fader } from './fader'
 import { MeshBatcher } from './batcher'
 import { type AssetResolver, NodeFactory } from './nodes'
 import type { ParticleEmitter } from './particles'
+import { jointData } from './joints'
 import { PlaySession } from './playSession'
 import { TouchControls, wantsTouchControls } from './touchControls'
 import { visualGeometry } from './visualGeometry'
@@ -82,22 +81,6 @@ export function colliderData(c: ColliderDoc, worldScale: Vector3, groups = layer
     default:
       return boxCollider((c.size[0] * sx) / 2, (c.size[1] * sy) / 2, (c.size[2] * sz) / 2, options)
   }
-}
-
-/** Engine joint data from a joint doc: degrees become radians, local units get the entity's scale. */
-export function jointData(j: JointDoc, target: Entity | null, worldScale: Vector3) {
-  const angular = j.type === 'hinge'
-  const unit = (v: number) => (angular ? (v * Math.PI) / 180 : v)
-  return joint(j.type, target, {
-    anchor: new Vector3(...j.anchor).multiply(worldScale),
-    axis: new Vector3(...j.axis),
-    limits: j.limits ? [unit(j.min), unit(j.max)] : null,
-    restLength: j.restLength,
-    stiffness: j.stiffness,
-    damping: j.damping,
-    motorSpeed: unit(j.motorSpeed),
-    motorStrength: j.motorStrength,
-  })
 }
 
 /** Builds ECS entities from entity docs. Used for the initial scene and for runtime spawning. */

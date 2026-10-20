@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { type AudioListener, Object3D, PerspectiveCamera, Scene } from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type Engine, type Entity, EventBus, type RapierPhysics, type System, World } from '../../engine'
+import { type Engine, type Entity, EventBus, Joint, type RapierPhysics, RigidBody, rigidBody, type System, World } from '../../engine'
 import { type LogLevel, logListeners } from '../console'
 import { createEntity, emptyProject, type ParamValue, type ProjectDoc } from '../document'
 import type { Handle } from '../scripting'
@@ -484,6 +484,52 @@ describe('PlaySession', () => {
     expect((s.rapier.raycast.mock.calls[0] as unknown[])[3]).toMatchObject({ exclude: handle.entity })
     expect(s.session.globals.hit).toBeNull()
     expect(s.rapier.applyImpulse).toHaveBeenCalledWith(handle.entity, expect.objectContaining({ y: 1 }))
+  })
+
+  it('creates and removes joints from scripts during play', () => {
+    const s = setup()
+    const id = s.script(
+      'Joints',
+      `export default {
+        update(ctx) {
+          const door = ctx.find('Door')
+          if (ctx.globals.step === 'hinge') ctx.physics.connect(door, ctx, { type: 'hinge', anchor: { x: 1, y: 0, z: 0 }, limits: [0, 90], motorSpeed: 45 })
+          if (ctx.globals.step === 'world') ctx.physics.connect(door, null)
+          if (ctx.globals.step === 'off') ctx.physics.disconnect(door)
+          if (ctx.globals.step === 'nobody') ctx.physics.connect(ctx.find('Ghost'), ctx)
+        },
+      }`,
+    )
+    const frame = s.entity('Frame', [{ script: id }])
+    const door = s.entity('Door')
+    door.object.scale.set(2, 2, 2)
+    const ghost = s.entity('Ghost')
+    s.engine.world.add(frame.entity, RigidBody, rigidBody(frame.object, { kinematic: true }))
+    s.engine.world.add(door.entity, RigidBody, rigidBody(door.object))
+
+    s.session.globals.step = 'hinge'
+    s.run('scripts.update')
+    const hinge = s.engine.world.get(door.entity, Joint)
+    expect(hinge.type).toBe('hinge')
+    expect(hinge.target).toBe(frame.entity)
+    expect(hinge.anchor.x).toBe(2) // local units get the body's scale
+    expect(hinge.limits).toEqual([0, Math.PI / 2]) // degrees become radians
+    expect(hinge.motorSpeed).toBeCloseTo(Math.PI / 4)
+
+    // Connecting again replaces the joint.
+    s.session.globals.step = 'world'
+    s.run('scripts.update')
+    expect(s.engine.world.get(door.entity, Joint)).toMatchObject({ type: 'fixed', target: null })
+
+    s.session.globals.step = 'off'
+    s.run('scripts.update')
+    expect(s.engine.world.has(door.entity, Joint)).toBe(false)
+
+    // A body without a Rigid Body gets a warning, not a joint.
+    s.session.globals.step = 'nobody'
+    s.run('scripts.update')
+    expect(s.engine.world.has(ghost.entity, Joint)).toBe(false)
+    expect(s.logs.some((l) => l.level === 'warn' && l.message.includes('"Ghost" has no Rigid Body'))).toBe(true)
   })
 
   it('writes HUD values into the container and removes the UI on teardown', () => {
