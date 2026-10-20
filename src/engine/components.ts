@@ -66,7 +66,7 @@ export function teleport(body: RigidBodyData, position: Vector3): void {
   body.previous.copy(position)
 }
 
-export type ColliderShape = 'box' | 'sphere' | 'capsule' | 'cylinder' | 'mesh' | 'convex'
+export type ColliderShape = 'box' | 'sphere' | 'capsule' | 'cylinder' | 'mesh' | 'convex' | 'heightfield'
 
 export interface ColliderData {
   shape: ColliderShape
@@ -93,6 +93,9 @@ export interface ColliderData {
   vertices?: Float32Array
   /** Mesh shape: triangle indices into `vertices`. */
   indices?: Uint32Array
+  /** Heightfield: `samples × samples` heights in meters, row by row from -z to +z (x within a row), centered on the entity. */
+  heights?: Float32Array
+  samples?: number
 }
 
 export const Collider = defineComponent<ColliderData>('Collider')
@@ -155,6 +158,16 @@ function boundsHalfExtents(v: Float32Array): Vector3 {
   const h = new Vector3()
   for (let i = 0; i < v.length; i += 3) h.set(Math.max(h.x, Math.abs(v[i])), Math.max(h.y, Math.abs(v[i + 1])), Math.max(h.z, Math.abs(v[i + 2])))
   return h
+}
+
+/** Terrain collider: a square grid of heights spanning `width` × `depth` meters, centered on the entity. */
+export function heightfieldCollider(heights: Float32Array, samples: number, width: number, depth: number, options: ColliderOptions = {}): ColliderData {
+  let top = 0
+  for (const h of heights) top = Math.max(top, Math.abs(h))
+  const data = collider('heightfield', new Vector3(width / 2, top, depth / 2), 0, 0, options)
+  data.heights = heights
+  data.samples = samples
+  return data
 }
 
 export type JointType = 'fixed' | 'hinge' | 'ball' | 'slider' | 'spring'

@@ -35,6 +35,7 @@ import { disposeVisual, NodeFactory } from './nodes'
 import { AudioMixer } from './audioMixer'
 import { Fader } from './fader'
 import { SceneEnvironment } from './environment'
+import { TerrainBrush } from './terrainBrush'
 import { UiPreview } from './uiPreview'
 
 /** Hooks the UI calls into the live scene view (set while edit mode is active). */
@@ -76,6 +77,7 @@ class DocSync {
             previous.model !== entity.model ||
             previous.light !== entity.light ||
             previous.camera !== entity.camera ||
+            previous.terrain !== entity.terrain ||
             !previous.particles !== !entity.particles)
         ) {
           this.factory.buildVisual(node, entity)
@@ -274,6 +276,38 @@ export function createEditScene(): GameScene {
         window.addEventListener('pointerup', onHandleUp)
       }
       canvas.addEventListener('pointerdown', onHandleDown, { capture: true })
+
+      // Terrain sculpting: a stroke while a brush tool is on and a terrain is selected.
+      const brush = new TerrainBrush(editorCamera, () => {
+        const s = editorStore.get()
+        if (s.view !== 'scene' || s.selection.length !== 1 || ownerId(s.selection[0]) !== s.selection[0]) return null
+        const entity = entities.find((e) => e.id === s.selection[0])
+        const node = entity && sync.nodes.get(entity.id)
+        return entity?.terrain && node ? { entity, node } : null
+      })
+      scene.add(brush.cursor)
+      const onBrushMove = (e: PointerEvent) => brush.move(toPointer(e))
+      const onBrushUp = () => {
+        brush.end()
+        orbit.enabled = editorStore.get().view === 'scene'
+        window.removeEventListener('pointerup', onBrushUp)
+      }
+      const onBrushDown = (e: PointerEvent) => {
+        if (e.button !== 0 || !brush.begin(toPointer(e))) return
+        e.stopImmediatePropagation()
+        e.preventDefault()
+        gizmoPressed = true
+        orbit.enabled = false
+        window.addEventListener('pointerup', onBrushUp)
+      }
+      canvas.addEventListener('pointerdown', onBrushDown, { capture: true })
+      canvas.addEventListener('pointermove', onBrushMove)
+      cleanups.push(() => {
+        canvas.removeEventListener('pointerdown', onBrushDown, { capture: true })
+        canvas.removeEventListener('pointermove', onBrushMove)
+        onBrushUp()
+        brush.cursor.removeFromParent()
+      })
       cleanups.push(() => {
         canvas.removeEventListener('pointerdown', onHandleDown, { capture: true })
         onHandleUp()

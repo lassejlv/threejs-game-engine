@@ -540,7 +540,9 @@ export class RapierPhysics {
               ? R.ColliderDesc.trimesh(shape.vertices, shape.indices)
               : shape.shape === 'convex' && shape.vertices
                 ? (R.ColliderDesc.convexHull(shape.vertices) ?? box())
-                : box()
+                : shape.shape === 'heightfield' && shape.heights && shape.samples
+                  ? this.heightfield(shape)
+                  : box()
     desc
       .setSensor(shape.trigger)
       .setFriction(shape.friction)
@@ -551,6 +553,16 @@ export class RapierPhysics {
     if (shape.trigger || body?.character || body?.kinematic) desc.setActiveCollisionTypes(R.ActiveCollisionTypes.ALL)
     if (body && body.mass > 0) desc.setMass(body.mass)
     return desc
+  }
+
+  /** Rapier wants heights x-major (z varying fastest); ours are row by row along z. */
+  private heightfield(shape: ColliderData): RAPIER_NS.ColliderDesc {
+    const n = shape.samples!
+    const src = shape.heights!
+    const heights = new Float32Array(n * n)
+    for (let z = 0; z < n; z++) for (let x = 0; x < n; x++) heights[x * n + z] = src[z * n + x]
+    const scale = { x: shape.halfExtents.x * 2, y: 1, z: shape.halfExtents.z * 2 }
+    return this.R.ColliderDesc.heightfield(n - 1, n - 1, heights, scale)
   }
 
   private dynamicBody(entity: Entity): RapierBody | null {

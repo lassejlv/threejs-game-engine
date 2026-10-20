@@ -26,6 +26,7 @@ export {
   Collider,
   convexCollider,
   cylinderCollider,
+  heightfieldCollider,
   Joint,
   joint,
   meshCollider,

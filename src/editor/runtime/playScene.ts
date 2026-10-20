@@ -17,6 +17,7 @@ import {
   type ColliderData,
   convexCollider,
   cylinderCollider,
+  heightfieldCollider,
   Joint,
   joint,
   meshCollider,
@@ -34,6 +35,7 @@ import {
 import { log } from '../console'
 import {
   type ColliderDoc,
+  decodeHeights,
   defaultInputActions,
   defaultInputAxes,
   defaultProjectSettings,
@@ -154,6 +156,13 @@ export class PlayBuilder {
             lockRotation,
           }),
         )
+      }
+      if (e.terrain && !e.collider) {
+        // Terrain collides as a static heightfield, scaled with the entity.
+        node.getWorldScale(scale)
+        const t = e.terrain
+        const heights = decodeHeights(t.heights, t.resolution).map((h) => h * scale.y)
+        world.add(entity, Collider, heightfieldCollider(heights, t.resolution, t.size[0] * scale.x, t.size[1] * scale.z, layerGroups(0, this.settings)))
       }
       if (e.collider) {
         node.getWorldScale(scale)

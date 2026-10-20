@@ -5,6 +5,7 @@ import {
   capsuleCollider,
   Collider,
   convexCollider,
+  heightfieldCollider,
   Joint,
   joint,
   meshCollider,
@@ -206,5 +207,19 @@ describe('RapierPhysics', () => {
     engine.world.add(ghost.entity, Collider, sphereCollider(0.3, { layer: 0b10, mask: 0b10 }))
     run(90)
     expect(engine.world.get(ghost.entity, RigidBody).position.y).toBeLessThan(-2)
+  })
+
+  it('lands bodies on a heightfield where its heights say', async () => {
+    const { engine, physics, run } = await setup()
+    // 3×3 samples over 10×10 m: flat, except a 2 m peak at the +x, -z corner.
+    const heights = new Float32Array(9)
+    heights[0 * 3 + 2] = 2 // row z = -5, column x = +5
+    const ground = spawn(engine, [0, 0, 0])
+    engine.world.add(ground.entity, Collider, heightfieldCollider(heights, 3, 10, 10))
+    run(1)
+    const down = new Vector3(0, -1, 0)
+    expect(physics.raycast(new Vector3(5, 10, -5), down, 20)!.point.y).toBeCloseTo(2, 1)
+    expect(physics.raycast(new Vector3(-5, 10, 5), down, 20)!.point.y).toBeCloseTo(0, 1)
+    expect(physics.raycast(new Vector3(0, 10, 0), down, 20)!.point.y).toBeCloseTo(0, 1)
   })
 })

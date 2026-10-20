@@ -44,6 +44,10 @@ export interface EditorState {
   showColliders: boolean
   /** Show drag handles on the selected collider in the Scene view. */
   colliderHandles: boolean
+  /** Terrain sculpting tool for the selected Terrain (null = off). */
+  terrainTool: 'raise' | 'lower' | 'smooth' | 'flatten' | null
+  brushRadius: number
+  brushStrength: number
   /** Scene view (free editor camera) or Game view (through the main camera). */
   view: 'scene' | 'game'
   mode: Mode
@@ -91,6 +95,9 @@ export const editorStore = createStore<EditorState>({
   snap: false,
   showColliders: false,
   colliderHandles: false,
+  terrainTool: null,
+  brushRadius: 4,
+  brushStrength: 0.5,
   view: 'scene',
   mode: 'edit',
   paused: false,

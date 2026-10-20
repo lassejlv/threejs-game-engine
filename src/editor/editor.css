@@ -1032,3 +1032,7 @@ body.resizing canvas {
 .icon-ui {
   color: #5cc8ff;
 }
+.button-row button.active {
+  background: var(--accent);
+  color: white;
+}

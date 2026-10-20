@@ -38,10 +38,11 @@ import {
 } from 'three'
 import { createStore, type Engine } from '../../engine'
 import { log } from '../console'
-import type { EntityDoc, MeshDoc, Primitive } from '../document'
+import { decodeHeights, type EntityDoc, type MeshDoc, type Primitive } from '../document'
 import { Animator } from './animator'
 import { shadowMapSize } from './environment'
 import { ParticleEmitter } from './particles'
+import { createTerrainMesh } from './terrain'
 
 /** Animation clip names per model asset, filled as models load (for the inspector's clip picker). */
 export const modelClips = createStore<Record<string, string[]>>({})
@@ -142,6 +143,7 @@ export class NodeFactory {
     node.userData.camera = undefined
     node.userData.animator = undefined
     node.userData.particles = undefined
+    node.userData.terrain = undefined
 
     if (entity.mesh) {
       const m = entity.mesh
@@ -167,6 +169,19 @@ export class NodeFactory {
       mesh.castShadow = m.castShadow
       mesh.receiveShadow = m.receiveShadow
       visual.add(mesh)
+    }
+
+    if (entity.terrain) {
+      const t = entity.terrain
+      const mesh = createTerrainMesh(t, decodeHeights(t.heights, t.resolution))
+      if (t.texture) {
+        const material = mesh.material as MeshStandardMaterial
+        this.loadMap(material, 'map', t.texture, [t.tiling, t.tiling], true)
+        // Vertex colors tint the texture; keep the slope blend visible but light.
+        material.color.set('#ffffff')
+      }
+      visual.add(mesh)
+      node.userData.terrain = mesh
     }
 
     if (entity.model?.asset) this.loadModel(node, visual, entity)
@@ -301,7 +316,7 @@ export class NodeFactory {
 
   /** Small pickable gizmos for things that are otherwise invisible. */
   private addProxy(visual: Group, entity: EntityDoc): void {
-    if (entity.mesh || entity.model) return
+    if (entity.mesh || entity.model || entity.terrain) return
     const kind = entity.light ? 'light' : entity.camera ? 'camera' : entity.audio ? 'audio' : entity.particles ? 'particles' : 'empty'
     const material = new MeshBasicMaterial({ color: proxyColors[kind], wireframe: true, fog: false })
     const proxy = new Mesh(proxyGeometry, material)

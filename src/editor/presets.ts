@@ -47,6 +47,12 @@ export const PRESETS: Preset[] = [
   light('spot', 'Spot Light', { intensity: 40, distance: 30 }),
   light('hemisphere', 'Hemisphere Light'),
   {
+    label: 'Terrain',
+    group: '3D Object',
+    name: 'Terrain',
+    create: () => ({ terrain: componentDefaults.terrain() }),
+  },
+  {
     label: 'Particle System',
     group: 'Effects',
     name: 'Particle System',

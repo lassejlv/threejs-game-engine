@@ -179,6 +179,63 @@ export interface ParticlesDoc {
 }
 
 /** mesh: the exact surface of the entity's mesh or model (static/kinematic). convex: its convex hull (any body). */
+export interface TerrainDoc {
+  /** Height samples per side (the grid is resolution × resolution). */
+  resolution: number
+  /** Width (x) and depth (z) in meters, before the entity's scale. */
+  size: [number, number]
+  /** Heights in meters: base64 of a Float32Array, row by row from -z to +z (see encodeHeights). */
+  heights: string
+  color: string
+  /** Color on steep ground (cliffs). */
+  slopeColor: string
+  /** Steepness in degrees where the slope color takes over. */
+  slopeAngle: number
+  /** Texture asset id, tiled over the terrain. */
+  texture: string | null
+  tiling: number
+}
+
+export function encodeHeights(heights: Float32Array): string {
+  const bytes = new Uint8Array(heights.buffer, heights.byteOffset, heights.byteLength)
+  let text = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(text)
+}
+
+export function decodeHeights(encoded: string, resolution: number): Float32Array {
+  const out = new Float32Array(resolution * resolution)
+  if (!encoded) return out
+  const text = atob(encoded)
+  const bytes = new Uint8Array(text.length)
+  for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i)
+  out.set(new Float32Array(bytes.buffer, 0, Math.min(out.length, Math.floor(bytes.length / 4))))
+  return out
+}
+
+/** Smooth rolling hills (deterministic for a seed): a starting point for sculpting. */
+export function generateHills(resolution: number, size: [number, number], height: number, seed = 1): Float32Array {
+  const out = new Float32Array(resolution * resolution)
+  let s = seed >>> 0
+  const random = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)
+  const waves = Array.from({ length: 6 }, (_, i) => ({
+    kx: ((random() - 0.5) * 2 * Math.PI * (i + 1)) / size[0],
+    kz: ((random() - 0.5) * 2 * Math.PI * (i + 1)) / size[1],
+    phase: random() * Math.PI * 2,
+    amp: height / (i + 1.5),
+  }))
+  for (let z = 0; z < resolution; z++) {
+    for (let x = 0; x < resolution; x++) {
+      const px = (x / (resolution - 1) - 0.5) * size[0]
+      const pz = (z / (resolution - 1) - 0.5) * size[1]
+      let h = 0
+      for (const w of waves) h += Math.sin(px * w.kx + pz * w.kz + w.phase) * w.amp
+      out[z * resolution + x] = Math.max(0, h * 0.5 + height * 0.25)
+    }
+  }
+  return out
+}
+
 export type ColliderShapeDoc = 'box' | 'sphere' | 'capsule' | 'cylinder' | 'mesh' | 'convex'
 
 export interface ColliderDoc {
@@ -241,6 +298,8 @@ export interface EntityDoc {
   rigidBody?: RigidBodyDoc
   collider?: ColliderDoc
   joint?: JointDoc
+  /** Sculptable ground; it collides as a static heightfield unless the entity has its own Collider. */
+  terrain?: TerrainDoc
   /**
    * On a prefab instance these are parameter overrides: entries whose script
    * matches one on the prefab root replace that script's params.
@@ -263,7 +322,7 @@ export type EntityOverride = { [K in ComponentKey]?: Partial<NonNullable<EntityD
   transform?: TransformDoc
 }
 
-const OVERRIDABLE: ComponentKey[] = ['mesh', 'model', 'light', 'camera', 'audio', 'particles', 'rigidBody', 'collider', 'joint']
+const OVERRIDABLE: ComponentKey[] = ['mesh', 'model', 'light', 'camera', 'audio', 'particles', 'rigidBody', 'collider', 'joint', 'terrain']
 
 /** An entity with an instance's overrides applied (only components it already has are changed). */
 export function applyOverride(e: EntityDoc, override: EntityOverride | undefined, isRoot: boolean): EntityDoc {
@@ -475,7 +534,7 @@ export interface ProjectDoc {
   scripts: ScriptDoc[]
 }
 
-export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'audio' | 'particles' | 'rigidBody' | 'collider' | 'joint'
+export type ComponentKey = 'mesh' | 'model' | 'light' | 'camera' | 'audio' | 'particles' | 'rigidBody' | 'collider' | 'joint' | 'terrain'
 
 export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   mesh: 'Mesh Renderer',
@@ -487,6 +546,7 @@ export const COMPONENT_LABELS: Record<ComponentKey, string> = {
   rigidBody: 'Rigid Body',
   collider: 'Collider',
   joint: 'Joint',
+  terrain: 'Terrain',
 }
 
 export const PRIMITIVE_COLLIDER: Record<Primitive, Pick<ColliderDoc, 'shape' | 'size' | 'radius' | 'height'>> = {
@@ -594,6 +654,16 @@ export const componentDefaults = {
     trigger: false,
     friction: 0.5,
     layer: 0,
+  }),
+  terrain: (): TerrainDoc => ({
+    resolution: 65,
+    size: [64, 64],
+    heights: encodeHeights(generateHills(65, [64, 64], 4)),
+    color: '#6f9b4f',
+    slopeColor: '#8a7a64',
+    slopeAngle: 35,
+    texture: null,
+    tiling: 16,
   }),
   joint: (): JointDoc => ({
     type: 'hinge',
@@ -870,6 +940,7 @@ function migrateEntity(raw: EntityDoc): EntityDoc {
   if (e.mesh) e.mesh = { ...componentDefaults.mesh(), ...e.mesh }
   if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
   if (e.joint) e.joint = { ...componentDefaults.joint(), ...e.joint }
+  if (e.terrain) e.terrain = { ...componentDefaults.terrain(), ...e.terrain }
   if (e.audio) e.audio = { ...componentDefaults.audio(), ...e.audio }
   if (e.model) e.model = { ...componentDefaults.model(), ...e.model }
   if (e.particles) e.particles = { ...componentDefaults.particles(), ...e.particles }
@@ -900,6 +971,7 @@ export function assetReferences(doc: ProjectDoc, id: string, fileName: string): 
     if (e.model?.lods.some((l) => l.asset === id)) uses.push('Model LOD')
     if (e.audio?.asset === id) uses.push('Audio Source')
     if (e.particles?.texture === id) uses.push('Particle texture')
+    if (e.terrain?.texture === id) uses.push('Terrain texture')
     for (const ref of e.scripts) {
       if (Object.values(ref.params).some((v) => typeof v === 'string' && names.has(v))) uses.push('script parameter')
     }
