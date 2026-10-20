@@ -53,6 +53,17 @@ export interface EngineOptions {
 
 export type RendererKind = 'webgl' | 'webgpu'
 
+/** The browser couldn't create a WebGL 2 context (no GPU driver, hardware acceleration off, blocklisted). */
+export class GraphicsUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super(
+      "This browser couldn't start 3D graphics (WebGL 2). Turn on hardware acceleration in the browser settings, update the graphics driver, or try another browser.",
+      { cause },
+    )
+    this.name = 'GraphicsUnavailableError'
+  }
+}
+
 /** The renderer behind an engine: WebGL, or WebGPU (with node materials). */
 export type EngineRenderer = WebGLRenderer | WebGPURenderer
 
@@ -200,7 +211,12 @@ export class Engine {
         if (device) patchTextureViewSwizzle(device)
       })
     } else {
-      this.renderer = new WebGLRenderer(rendererOptions)
+      try {
+        this.renderer = new WebGLRenderer(rendererOptions)
+      } catch (error) {
+        this.canvas.remove()
+        throw new GraphicsUnavailableError(error)
+      }
       this.ready = Promise.resolve()
     }
     this.renderer.toneMapping = NeutralToneMapping

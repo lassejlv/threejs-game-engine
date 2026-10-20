@@ -42,6 +42,7 @@ jobs:
         browser: [chromium, firefox, webkit]
     env:
       E2E_BROWSER: ${{ matrix.browser }}
+      LIBGL_ALWAYS_SOFTWARE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -53,6 +54,10 @@ jobs:
       - run: npm ci
       - name: Install ${{ matrix.browser }} for Playwright
         run: npx playwright install --with-deps ${{ matrix.browser }}
+      # Headless Firefox needs a GL driver for WebGL; the runner has no GPU, so use Mesa's software one.
+      - name: Software OpenGL (Mesa) for Firefox
+        if: matrix.browser == 'firefox'
+        run: sudo apt-get install -y --no-install-recommends libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libegl1
       - name: Smoke test (editor, play, context loss, draw-call budget)
         run: npm run test:e2e
       - name: Export test (every template exported and played)

@@ -46,13 +46,23 @@ export async function startPlayer(gpu?: WebGPUKit): Promise<void> {
   document.title = project.name
   if (gpu) installWebGPUKit(gpu)
   const webgpu = !!gpu && project.settings.renderer === 'webgpu'
-  let engine = new Engine({ container, renderer: webgpu ? 'webgpu' : 'webgl', webgpuRenderer: gpu?.Renderer })
+  let engine: Engine
   try {
-    await engine.ready
+    engine = new Engine({ container, renderer: webgpu ? 'webgpu' : 'webgl', webgpuRenderer: gpu?.Renderer })
+    try {
+      await engine.ready
+    } catch (error) {
+      console.error('[game] WebGPU renderer failed, using WebGL', error)
+      engine.dispose()
+      engine = new Engine({ container })
+    }
   } catch (error) {
-    console.error('[game] WebGPU renderer failed, using WebGL', error)
-    engine.dispose()
-    engine = new Engine({ container })
+    // No 3D in this browser: tell the player instead of showing a blank page.
+    console.error('[game]', error)
+    const message = Object.assign(document.createElement('p'), { className: 'start', role: 'alert' })
+    message.textContent = error instanceof Error ? error.message : String(error)
+    container.appendChild(message)
+    return
   }
   // Which renderer runs, for anyone inspecting the page (and the export tests).
   container.dataset.renderer = engine.backendName

@@ -15,6 +15,18 @@ export interface GameCanvasProps {
   children?: ReactNode
 }
 
+const FAILURE_STYLE: CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  display: 'grid',
+  placeItems: 'center',
+  padding: 24,
+  textAlign: 'center',
+  font: '14px/1.5 ui-sans-serif, system-ui, sans-serif',
+  color: '#e6e8ee',
+  background: '#15171c',
+}
+
 /**
  * Hosts an Engine. The engine owns its own canvas, so StrictMode's
  * mount/unmount/mount cycle gets a clean context each time.
@@ -23,6 +35,7 @@ export function GameCanvas({ scene, options, onReady, className, style, children
   const viewportRef = useRef<HTMLDivElement>(null)
   const init = useRef({ options, onReady })
   const [engine, setEngine] = useState<Engine | null>(null)
+  const [failure, setFailure] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -30,7 +43,14 @@ export function GameCanvas({ scene, options, onReady, className, style, children
     const container = viewportRef.current!
     const { options, onReady } = init.current
     void (async () => {
-      instance = new Engine({ ...options, container })
+      try {
+        instance = new Engine({ ...options, container })
+      } catch (error) {
+        // No 3D in this browser: say so instead of leaving an empty canvas.
+        console.error('[engine]', error)
+        if (!cancelled) setFailure(error instanceof Error ? error.message : String(error))
+        return
+      }
       try {
         await instance.ready
       } catch (error) {
@@ -58,6 +78,11 @@ export function GameCanvas({ scene, options, onReady, className, style, children
   return (
     <div className={className} style={{ position: 'relative', overflow: 'hidden', ...style }}>
       <div ref={viewportRef} style={{ position: 'absolute', inset: 0 }} />
+      {failure && (
+        <div className="graphics-unavailable" role="alert" style={FAILURE_STYLE}>
+          {failure}
+        </div>
+      )}
       {engine && <EngineContext.Provider value={engine}>{children}</EngineContext.Provider>}
     </div>
   )

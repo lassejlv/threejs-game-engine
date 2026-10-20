@@ -1,4 +1,4 @@
-export { Engine, fitCamera } from './core/Engine'
+export { Engine, fitCamera, GraphicsUnavailableError } from './core/Engine'
 export type { CollisionEvent, EngineEvents, EngineOptions, EngineStats, GameCamera, RenderPipeline, SystemTiming } from './core/Engine'
 export { EventBus } from './core/EventBus'
 export { defineScene } from './core/GameScene'

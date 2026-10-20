@@ -17,6 +17,7 @@ All notable changes to the engine. The project follows [Semantic Versioning](htt
 - Trust for imported projects: their scripts are never evaluated (not even to read parameters) until the user allows it in a prompt, which is remembered per project.
 
 ### Fixed
+- Without WebGL (hardware acceleration off, no driver), the editor showed an empty viewport and exported games a blank page; both now explain what is wrong, and the editor stays usable.
 - Dropdown menus near a panel edge (Screen UI, Create) were cut off and inherited their header's styling.
 
 ### Removed
