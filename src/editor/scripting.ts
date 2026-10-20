@@ -175,8 +175,27 @@ const SCRIPT_HELPERS = { damp, dampAngle, moveTowards, teleport }
 
 const compiled = new Map<string, Behavior | Error>()
 
+/**
+ * Whether project scripts may be evaluated at all. Compiling runs a script's
+ * top-level code, so an imported project's scripts stay unevaluated until the
+ * project is trusted (see trust.ts). The exported player leaves this open.
+ */
+let scriptsAllowed: () => boolean = () => true
+
+export function setScriptGate(allowed: () => boolean): void {
+  scriptsAllowed = allowed
+}
+
+export class ScriptsPausedError extends Error {
+  constructor() {
+    super("Scripts are paused: this project was imported and isn't trusted yet.")
+    this.name = 'ScriptsPausedError'
+  }
+}
+
 /** Compiles project script source (`export default { ... }`). Results are cached by source. */
 export function compileScript(name: string, source: string): Behavior | Error {
+  if (!scriptsAllowed()) return new ScriptsPausedError()
   const cached = compiled.get(source)
   if (cached) return cached
   let result: Behavior | Error

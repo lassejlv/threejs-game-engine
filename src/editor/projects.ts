@@ -9,6 +9,8 @@ import { BrowserStore, readBytes, readLegacyProject } from './storage/browserSto
 import { DiskStore } from './storage/diskStore'
 import type { ProjectStore, ProjectSummary } from './storage/types'
 import type { Template } from './templates'
+import { setScriptGate } from './scripting'
+import { initTrust, isTrusted, setTrusted } from './trust'
 
 /**
  * Projects: picks where they are stored (the local file server's projects/
@@ -63,10 +65,14 @@ export async function bootProjects(options: { store?: ProjectStore } = {}): Prom
   try {
     store = options.store ?? ((await DiskStore.available()) ? new DiskStore() : new BrowserStore())
     setStorage({ kind: store.kind, label: store.label })
+    // Imported projects' scripts are never evaluated until trusted (compiling runs top-level code).
+    setScriptGate(() => editorStore.get().storage.trusted)
     await migrateLegacy(store)
     let projects = await store.list()
+    initTrust(store.kind, projects.map((p) => p.id))
     if (projects.length === 0) {
-      await store.create(sampleProject())
+      const sample = await store.create(sampleProject())
+      setTrusted(store.kind, sample.id, true)
       projects = await store.list()
     }
     const last = recall(`${LAST_PROJECT}:${store.kind}`)
@@ -98,6 +104,7 @@ async function migrateLegacy(target: ProjectStore): Promise<void> {
   if (legacy) {
     const doc = parseProject(legacy.doc)
     const summary = await target.create(doc)
+    setTrusted(target.kind, summary.id, true) // the user's own project from before
     for (const { meta, blob } of legacy.assets) await target.writeAsset(summary.id, meta, blob)
     log('log', `Moved your project "${doc.name}" into ${target.label}.`)
   }
@@ -120,18 +127,28 @@ export async function openProject(id: string): Promise<void> {
   for (const warning of checkReferences(doc)) log('warn', warning)
   const assets = await assetLibrary.open(store, id)
   lastSaved = doc // before replaceDoc, so opening isn't mistaken for an edit
+  // Trust first: replaceDoc re-renders panels that compile scripts.
+  setStorage({ projectId: id, trusted: isTrusted(store.kind, id) })
   replaceDoc(doc)
   editorStore.set({ assets })
-  setStorage({ projectId: id, state: 'saved', error: null })
+  setStorage({ state: 'saved', error: null })
   remember(`${LAST_PROJECT}:${store.kind}`, id)
   await refreshProjects()
 }
 
-/** Stores `doc` as a new project and opens it. */
-export async function createProject(doc: ProjectDoc, assets: { meta: AssetMeta; blob: Blob }[] = []): Promise<void> {
+/**
+ * Stores `doc` as a new project and opens it. Projects made in the editor are
+ * trusted; imports pass `trusted: false` when they contain scripts.
+ */
+export async function createProject(
+  doc: ProjectDoc,
+  assets: { meta: AssetMeta; blob: Blob }[] = [],
+  { trusted = true }: { trusted?: boolean } = {},
+): Promise<void> {
   if (!store) throw new Error('Projects are not ready yet')
   await ensureSaved()
   const summary = await store.create(serializableProject(doc))
+  setTrusted(store.kind, summary.id, trusted)
   for (const { meta, blob } of assets) await store.writeAsset(summary.id, meta, blob)
   await openProject(summary.id)
   log('log', `Created "${doc.name}" in ${store.label}.`)
@@ -168,7 +185,8 @@ export async function importProjectFile(file: File): Promise<void> {
     }
   }
   const doc = parseProject(raw)
-  if (store) await createProject(doc, assets)
+  // Someone else's scripts don't run until the user says so (built-in scripts are always fine).
+  if (store) await createProject(doc, assets, { trusted: doc.scripts.length === 0 })
   else {
     replaceDoc(doc)
     assetLibrary.clear()
@@ -188,6 +206,7 @@ export async function duplicateProject(id: string): Promise<ProjectSummary | nul
   if (!store) return null
   await flushSave()
   const copy = await store.duplicate(id)
+  setTrusted(store.kind, copy.id, isTrusted(store.kind, id))
   await refreshProjects()
   return copy
 }
@@ -202,10 +221,39 @@ export async function deleteProject(id: string): Promise<void> {
     await saving
   }
   await store.remove(id)
+  setTrusted(store.kind, id, false)
   const projects = await refreshProjects()
   if (!current) return
   if (projects.length) await openProject(projects[0].id)
   else await createProject(sampleProject())
+}
+
+let trustAnswer: ((run: boolean) => void) | null = null
+
+/**
+ * Before running the open project's scripts (Play, Run in new tab): true right
+ * away when they may run, otherwise asks (the TrustDialog answers).
+ */
+export function requestRun(): Promise<boolean> {
+  const { storage, doc } = editorStore.get()
+  if (storage.trusted || doc.scripts.length === 0) return Promise.resolve(true)
+  trustAnswer?.(false)
+  editorStore.set({ trustPrompt: { project: doc.name, scripts: doc.scripts.map((s) => s.name) } })
+  return new Promise((resolve) => (trustAnswer = resolve))
+}
+
+/** The answer to the trust prompt: true trusts the project (remembered) and lets it run. */
+export function answerTrust(run: boolean): void {
+  if (run) trustOpenProject()
+  editorStore.set({ trustPrompt: null })
+  trustAnswer?.(run)
+  trustAnswer = null
+}
+
+export function trustOpenProject(): void {
+  const { storage } = editorStore.get()
+  if (store && storage.projectId) setTrusted(store.kind, storage.projectId, true)
+  setStorage({ trusted: true })
 }
 
 function startAutosave(): void {
@@ -292,5 +340,7 @@ export function resetProjectsForTests(): void {
   store = null
   lastSaved = null
   saving = null
-  editorStore.set({ storage: { kind: null, label: '', projectId: null, state: 'idle', error: null }, projects: [] })
+  editorStore.set({ storage: { kind: null, label: '', projectId: null, state: 'idle', error: null, trusted: true }, projects: [], trustPrompt: null })
+  setScriptGate(() => true)
+  trustAnswer = null
 }

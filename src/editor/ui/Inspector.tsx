@@ -67,6 +67,8 @@ export function Inspector() {
   const doc = useStore(editorStore, (s) => s.doc)
   const editing = useStore(editorStore, (s) => s.editing)
   const scene = useStore(editorStore, (s) => currentScene(s))
+  // Script parameters come from compiling the script, which waits for the project to be trusted.
+  useStore(editorStore, (s) => s.storage.trusted)
   const playing = useStore(editorStore, (s) => s.mode === 'play')
   const uiElement = useStore(editorStore, (s) => (s.uiSelection && s.editing.kind === 'scene' ? currentScene(s).ui.find((u) => u.id === s.uiSelection) : undefined))
 

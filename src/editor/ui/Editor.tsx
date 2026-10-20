@@ -18,7 +18,7 @@ import {
   switchPlayScene,
   undo,
 } from '../editor'
-import { saveNow } from '../projects'
+import { answerTrust, requestRun, saveNow } from '../projects'
 import { editorCamera, getOrbit } from '../runtime/editorCamera'
 import { createEditScene, sceneView } from '../runtime/editScene'
 import { watchGraphics } from '../runtime/graphicsNotice'
@@ -171,7 +171,7 @@ function useShortcuts() {
       if (mod && key === 'p') {
         e.preventDefault()
         if (state.mode === 'play') stop()
-        else play()
+        else void requestRun().then((ok) => ok && play())
         return
       }
       if (state.mode === 'play') return
@@ -231,10 +231,23 @@ function useWebGPUKit(wanted: boolean): WebGPUKit | null {
   return kit
 }
 
-/** A failed save, or projects still opening: never let either go unnoticed. */
+/** A failed save, projects still opening, or paused scripts: never let any go unnoticed. */
 function StorageNotice() {
   const storage = useStore(editorStore, (s) => s.storage)
+  const scripts = useStore(editorStore, (s) => s.doc.scripts.length)
+  const prompt = useStore(editorStore, (s) => s.trustPrompt)
+  if (prompt) return <TrustDialog project={prompt.project} scripts={prompt.scripts} />
   if (storage.state === 'loading' && !storage.projectId) return <div className="boot-overlay">Opening project…</div>
+  if (!storage.trusted && scripts > 0 && storage.state !== 'error') {
+    return (
+      <div className="save-banner trust-banner" role="status">
+        <strong>Scripts are paused.</strong> This project was imported; its {scripts} script{scripts === 1 ? '' : 's'} won't run until you trust it.
+        <button type="button" onClick={() => void requestRun()}>
+          Review…
+        </button>
+      </div>
+    )
+  }
   if (storage.state !== 'error') return null
   return (
     <div className="save-banner" role="alert">
@@ -245,6 +258,36 @@ function StorageNotice() {
       <button type="button" onClick={exportProject}>
         Export a copy
       </button>
+    </div>
+  )
+}
+
+/** Asks before an imported project's scripts run for the first time. */
+function TrustDialog({ project, scripts }: { project: string; scripts: string[] }) {
+  return (
+    <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && answerTrust(false)}>
+      <div className="dialog trust-dialog" role="alertdialog" aria-modal="true" aria-label="Run this project's scripts?">
+        <header className="dialog-header">
+          <span>Run this project's scripts?</span>
+        </header>
+        <div className="dialog-body">
+          <p>
+            <strong>{project}</strong> was imported and has {scripts.length} script{scripts.length === 1 ? '' : 's'}: {scripts.join(', ')}.
+          </p>
+          <p className="hint">
+            Scripts run inside the editor with the same access as you: they could read or change your other projects. Only run scripts from people
+            you trust. Your answer is remembered for this project.
+          </p>
+          <div className="dialog-actions">
+            <button type="button" onClick={() => answerTrust(false)}>
+              Cancel
+            </button>
+            <button type="button" className="primary" onClick={() => answerTrust(true)} autoFocus>
+              Run scripts
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

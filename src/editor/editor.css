@@ -1180,3 +1180,16 @@ body.resizing canvas {
 .project-list .danger {
   color: #ff8a8f;
 }
+
+.trust-banner {
+  background: #6b4a12;
+}
+.trust-dialog {
+  width: min(520px, 100%);
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}

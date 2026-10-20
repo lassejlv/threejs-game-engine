@@ -5,6 +5,9 @@
 // Run with `npm run test:e2e` (E2E_BROWSER=firefox|webkit for other browsers).
 // Not part of `npm test` (vitest only includes src/**/*.test.ts).
 
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { assert, budgets, collectErrors, countColors, failureShot, launch, logger, startDevServer } from './harness.mjs'
 
 const log = logger('smoke')
@@ -102,6 +105,31 @@ async function main() {
       log(`after a context loss and restore: ${after} colors, ${advanced} frames`)
       assert(after > 8 && advanced > 0, 'the game renders and runs again after the context is restored')
     } else log('WEBGL_lose_context unavailable: skipped the context-loss check')
+
+    // Trust: an imported project's script must not run until the user allows it.
+    await page.keyboard.press('Control+KeyP') // back to edit mode
+    const playButton = page.locator('button[title="Play (Ctrl+P)"]')
+    await playButton.waitFor({ timeout: 15_000 })
+    const shared = join(mkdtempSync(join(tmpdir(), 'ge-trust-')), 'shared.json')
+    const doc = JSON.parse(readFileSync(new URL('../src/editor/fixtures/v3.json', import.meta.url), 'utf8'))
+    doc.name = 'Shared Game'
+    doc.scripts = [{ id: 'mark', name: 'Mark', source: "document.title = 'script ran'\nexport default {}" }]
+    doc.scenes[0].entities[0].scripts.push({ script: 'mark', params: {} })
+    writeFileSync(shared, JSON.stringify(doc))
+    await page.locator('input[type=file][accept*=".zip"]').setInputFiles(shared)
+    await page.locator('.trust-banner').waitFor({ timeout: 15_000 })
+    const titleBefore = await page.title()
+    await page.keyboard.press('Control+KeyP')
+    await page.locator('.trust-dialog').waitFor({ timeout: 5_000 })
+    assert((await page.title()) === titleBefore, 'the imported script has not run while the trust dialog is open')
+    await page.locator('.trust-dialog').getByRole('button', { name: 'Cancel' }).click()
+    await page.waitForTimeout(1000)
+    assert((await page.title()) === titleBefore && (await playButton.count()) === 1, 'Cancel neither plays nor runs the script')
+    await page.keyboard.press('Control+KeyP')
+    await page.locator('.trust-dialog').getByRole('button', { name: 'Run scripts' }).click()
+    await page.waitForFunction(() => document.title === 'script ran', null, { timeout: 30_000 })
+    assert((await page.locator('.trust-banner').count()) === 0, 'the paused-scripts banner is gone once trusted')
+    log('imported scripts waited for trust, then ran')
 
     assert(errors.length === 0, `no console errors or page errors, got:\n  ${errors.join('\n  ')}`)
     log('PASS')

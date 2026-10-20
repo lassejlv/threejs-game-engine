@@ -75,6 +75,8 @@ export interface EditorState {
   storage: StorageStatus
   /** Projects in the active store, most recently saved first. */
   projects: ProjectSummary[]
+  /** Asking whether an imported project's scripts may run (answered with answerTrust). */
+  trustPrompt: { project: string; scripts: string[] } | null
 }
 
 export interface StorageStatus {
@@ -85,6 +87,8 @@ export interface StorageStatus {
   projectId: string | null
   state: 'idle' | 'loading' | 'saving' | 'saved' | 'error'
   error: string | null
+  /** False for an imported project whose scripts haven't been allowed to run (see trust.ts). */
+  trusted: boolean
 }
 
 const HISTORY_LIMIT = 200
@@ -120,8 +124,9 @@ export const editorStore = createStore<EditorState>({
   bottomTab: 'project',
   history: [],
   redoHistory: [],
-  storage: { kind: null, label: '', projectId: null, state: 'idle', error: null },
+  storage: { kind: null, label: '', projectId: null, state: 'idle', error: null, trusted: true },
   projects: [],
+  trustPrompt: null,
 })
 
 export const assetLibrary = new AssetLibrary()

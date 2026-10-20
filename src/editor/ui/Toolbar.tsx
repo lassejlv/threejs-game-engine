@@ -22,7 +22,7 @@ import { sceneView } from '../runtime/editScene'
 import { TextInput } from './fields'
 import { Icon, type IconName } from './icons'
 import { Menu, type MenuItem } from './Menu'
-import { exportBundle, importProjectFile, newProjectFromTemplate, projectStore } from '../projects'
+import { exportBundle, importProjectFile, newProjectFromTemplate, projectStore, requestRun } from '../projects'
 import { ProjectSettingsDialog } from './ProjectSettings'
 import { ProjectsDialog } from './ProjectsDialog'
 import { TemplateDialog } from './TemplateDialog'
@@ -129,7 +129,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
         <button
           type="button"
           className={`tool-button play ${playing ? 'active' : ''}`}
-          onClick={playing ? stop : play}
+          onClick={playing ? stop : () => void requestRun().then((ok) => ok && play())}
           title={playing ? 'Stop (Ctrl+P)' : 'Play (Ctrl+P)'}
         >
           <Icon name={playing ? 'stop' : 'play'} />
@@ -147,7 +147,7 @@ export function Toolbar({ engine }: { engine: Engine | null }) {
           align="right"
           label={<><Icon name="build" /> Build</>}
           items={[
-            { label: 'Run in new tab', onSelect: () => void runGameInTab() },
+            { label: 'Run in new tab', onSelect: () => void requestRun().then((ok) => (ok ? runGameInTab() : undefined)) },
             { label: 'Download game (.html)', onSelect: () => void downloadGame() },
             { label: 'Download installable web app (.zip)', onSelect: () => void downloadWebApp() },
           ]}

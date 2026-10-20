@@ -14,6 +14,7 @@ All notable changes to the engine. The project follows [Semantic Versioning](htt
 - An error list and a stop screen in exported games.
 - Size and draw-call budgets (`budgets.json`) checked in CI, and tests that export and play every template.
 - MIT license.
+- Trust for imported projects: their scripts are never evaluated (not even to read parameters) until the user allows it in a prompt, which is remembered per project.
 
 ### Fixed
 - Dropdown menus near a panel edge (Screen UI, Create) were cut off and inherited their header's styling.

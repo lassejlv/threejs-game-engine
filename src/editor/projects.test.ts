@@ -4,7 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AssetMeta } from './assetLibrary'
 import { emptyProject } from './document'
 import { assetLibrary, editorStore, updateProject } from './editor'
-import { bootProjects, createProject, deleteProject, openProject, projectStore, resetProjectsForTests, saveNow } from './projects'
+import {
+  answerTrust,
+  bootProjects,
+  createProject,
+  deleteProject,
+  importProjectFile,
+  openProject,
+  projectStore,
+  requestRun,
+  resetProjectsForTests,
+  saveNow,
+} from './projects'
+import { compileScript, ScriptsPausedError } from './scripting'
 import { BrowserStore } from './storage/browserStore'
 
 let dbCounter = 0
@@ -157,5 +169,67 @@ describe('projects', () => {
     resetProjectsForTests()
     await bootProjects({ store })
     expect((await projectStore()!.list()).filter((p) => p.name === 'Old Game')).toHaveLength(1)
+  })
+
+  describe('trust', () => {
+    // Compiling a script runs its top-level code: this one counts how often that happens.
+    const SOURCE = (tag: string) => `globalThis.__ran = (globalThis.__ran ?? 0) + 1 // ${tag}\nexport default { params: { speed: 2 } }`
+    const ran = () => (globalThis as { __ran?: number }).__ran ?? 0
+    const importDoc = (doc: object) => importProjectFile(new File([JSON.stringify(doc)], 'shared.json'))
+
+    it("never evaluates an imported project's scripts until the user trusts it", async () => {
+      await bootProjects({ store: freshStore() })
+      const before = ran()
+      await importDoc({ ...emptyProject(), name: 'Shared', scripts: [{ id: 'evil', name: 'Evil', source: SOURCE('a') }] })
+      expect(s().storage.trusted).toBe(false)
+      expect(compileScript('Evil', SOURCE('a'))).toBeInstanceOf(ScriptsPausedError)
+      expect(ran()).toBe(before)
+
+      const first = requestRun()
+      expect(s().trustPrompt).toEqual({ project: 'Shared', scripts: ['Evil'] })
+      answerTrust(false)
+      expect(await first).toBe(false)
+      expect(compileScript('Evil', SOURCE('a'))).toBeInstanceOf(ScriptsPausedError)
+      expect(ran()).toBe(before)
+
+      const second = requestRun()
+      answerTrust(true)
+      expect(await second).toBe(true)
+      expect(compileScript('Evil', SOURCE('a'))).not.toBeInstanceOf(Error)
+      expect(ran()).toBe(before + 1)
+    })
+
+    it('remembers trust per project, and trusts what is made here', async () => {
+      const store = freshStore()
+      await bootProjects({ store })
+      expect(s().storage.trusted).toBe(true) // the sample
+      await importDoc({ ...emptyProject(), name: 'Shared', scripts: [{ id: 'x', name: 'X', source: SOURCE('b') }] })
+      const shared = s().storage.projectId!
+      const run = requestRun()
+      answerTrust(true)
+      await run
+      await createProject({ ...emptyProject(), name: 'Mine', scripts: [{ id: 'y', name: 'Y', source: SOURCE('c') }] })
+      expect(s().storage.trusted).toBe(true)
+      await openProject(shared)
+      expect(s().storage.trusted).toBe(true)
+      // Imports without project scripts have nothing to run, so nothing to ask.
+      await importDoc({ ...emptyProject(), name: 'Plain' })
+      expect(s().storage.trusted).toBe(true)
+      expect(await requestRun()).toBe(true)
+    })
+
+    it('trusts projects that existed before trust tracking, but not ones that appear later', async () => {
+      const store = freshStore()
+      const old = await store.create({ ...emptyProject(), name: 'Old', scripts: [{ id: 'o', name: 'O', source: SOURCE('d') }] })
+      localStorage.setItem('ge-last-project:browser', old.id)
+      await bootProjects({ store })
+      expect(s().storage).toMatchObject({ projectId: old.id, trusted: true })
+
+      resetProjectsForTests()
+      const copied = await store.create({ ...emptyProject(), name: 'Copied in', scripts: [{ id: 'c', name: 'C', source: SOURCE('e') }] })
+      localStorage.setItem('ge-last-project:browser', copied.id)
+      await bootProjects({ store })
+      expect(s().storage).toMatchObject({ projectId: copied.id, trusted: false })
+    })
   })
 })

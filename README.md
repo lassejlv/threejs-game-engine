@@ -146,6 +146,17 @@ Add a **2D Camera** (orthographic, from Create → 2D) and **Sprites**, and tick
 
 Project Settings → Renderer switches between WebGL and **WebGPU (experimental)**. WebGPU uses three.js's `WebGPURenderer` with node materials. Particles and post-processing have TSL versions, and browsers without WebGPU fall back to WebGL 2 through the same renderer. The viewport switches right away, the stats panel (`` ` ``) shows which backend is running, and exported games follow the setting.
 
+## Security model
+
+Scripts are ordinary JavaScript with the same powers as the page they run in. The engine doesn't sandbox them, so these are the boundaries:
+
+- **In the editor**, Play runs project scripts in the editor's own page. A script could read or change your other projects (through browser storage or the local file server). Projects you create are trusted. A project you **import** (a bundle, a `.json`, or a folder copied into `projects/`) asks before its scripts run for the first time ("Run scripts" or "Cancel"), and remembers the answer. Built-in scripts never ask.
+- **The file server** (`server/files.ts`) only listens on `127.0.0.1`. It refuses requests from other websites (Origin check) and from foreign host names (DNS rebinding), keeps every path inside the projects folder, and caps request sizes.
+- **Exported games** are self-contained HTML files with no network calls of their own. Scripts can use whatever the page they're hosted on allows (`ctx.save` uses that site's `localStorage`). Problems show up in an on-screen error list instead of only the console.
+- **Nothing leaves your machine:** no accounts, telemetry or cloud services.
+
+Running play mode in a separate, sandboxed origin would isolate untrusted scripts completely. That is deliberately not done while the editor is local-first and single-user. The trust prompt covers the realistic case (opening someone else's project). Revisit it if the editor is ever hosted for others.
+
 ## Architecture
 
 ```
