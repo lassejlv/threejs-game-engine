@@ -39,7 +39,9 @@ function escapeHtml(text: string): string {
 export async function buildGameHtml(options: BuildOptions = {}): Promise<string> {
   const { doc, assets: metas } = editorStore.get()
   const { includeUnused = doc.settings.exportIncludeUnused, compress = doc.settings.exportCompress } = options
-  const response = await fetch(`${import.meta.env.BASE_URL}player/player.js`)
+  // WebGPU projects get the player variant that bundles three's WebGPU renderer.
+  const bundle = doc.settings.renderer === 'webgpu' ? 'player-webgpu.js' : 'player.js'
+  const response = await fetch(`${import.meta.env.BASE_URL}player/${bundle}`)
   if (!response.ok) throw new Error('Player bundle not found. Run `npm run build:player`.')
   const player = await response.text()
 

@@ -13,7 +13,8 @@ export default defineConfig({
       output: {
         codeSplitting: {
           groups: [
-            { name: 'three', test: /node_modules[\\/]three[\\/]build[\\/]/ },
+            // Core only: the WebGPU renderer (three.webgpu.js, TSL) stays in a lazy chunk.
+            { name: 'three', test: /node_modules[\\/]three[\\/]build[\\/]three\.(core|module)\.js/ },
             { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
           ],
         },

@@ -43,6 +43,7 @@ import { decodeHeights, type EntityDoc, type MeshDoc, type Primitive } from '../
 import { Animator } from './animator'
 import { shadowMapSize } from './environment'
 import { ParticleEmitter } from './particles'
+import { particleMaterialFor } from './rendererKit'
 import { SpriteRenderer } from './sprite'
 import { createTerrainMesh } from './terrain'
 
@@ -237,7 +238,7 @@ export class NodeFactory {
     if (entity.audio?.asset && this.listener) this.createAudio(node, visual, entity)
 
     if (entity.particles) {
-      const emitter = new ParticleEmitter(entity.particles, { preview: this.editorMode })
+      const emitter = new ParticleEmitter(entity.particles, { preview: this.editorMode, material: particleMaterialFor(this.engine) })
       visual.add(emitter.object)
       visual.userData.particles = emitter
       node.userData.particles = emitter

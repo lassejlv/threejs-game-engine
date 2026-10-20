@@ -50,6 +50,8 @@ export function DebugOverlay({ toggleKey = 'Backquote', defaultOpen = false }: D
         </button>
       </header>
       <dl>
+        <dt>Renderer</dt>
+        <dd>{engine.backendName}</dd>
         <dt>FPS</dt>
         <dd>{stats.fps}</dd>
         <dt>CPU</dt>

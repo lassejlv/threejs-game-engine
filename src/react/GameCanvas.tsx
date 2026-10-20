@@ -5,7 +5,7 @@ import { EngineContext } from './hooks'
 export interface GameCanvasProps {
   /** Scene to run. Changing it loads the new scene. */
   scene?: GameScene
-  /** Read once on mount. */
+  /** Read once on mount (remount with a `key` to change them, e.g. the renderer). */
   options?: Omit<EngineOptions, 'container'>
   /** Called once with the engine after it starts. */
   onReady?: (engine: Engine) => void
@@ -25,12 +25,27 @@ export function GameCanvas({ scene, options, onReady, className, style, children
   const [engine, setEngine] = useState<Engine | null>(null)
 
   useEffect(() => {
-    const instance = new Engine({ ...init.current.options, container: viewportRef.current! })
-    instance.start()
-    setEngine(instance)
-    init.current.onReady?.(instance)
+    let cancelled = false
+    let instance: Engine | null = null
+    const container = viewportRef.current!
+    const { options, onReady } = init.current
+    void (async () => {
+      instance = new Engine({ ...options, container })
+      try {
+        await instance.ready
+      } catch (error) {
+        console.error('[engine] WebGPU renderer failed, using WebGL', error)
+        instance.dispose()
+        instance = new Engine({ ...options, renderer: 'webgl', container })
+      }
+      if (cancelled) return instance.dispose()
+      instance.start()
+      setEngine(instance)
+      onReady?.(instance)
+    })()
     return () => {
-      instance.dispose()
+      cancelled = true
+      instance?.dispose()
       setEngine(null)
     }
   }, [])

@@ -34,7 +34,7 @@ Panels can be resized by dragging their edges. Shortcuts: `W` `E` `R` pick the t
 
 The project autosaves to localStorage. Assets (.glb models, .png/.jpg/.webp textures, .mp3/.ogg/.wav audio) are stored in IndexedDB.
 
-**Project Settings** (File menu): project name, start scene and export options; input actions and axes (record keys by pressing them) and touch controls; and 16 named physics layers with a collision matrix.
+**Project Settings** (File menu): project name, start scene, renderer and export options; input actions and axes (record keys by pressing them) and touch controls; and 16 named physics layers with a collision matrix.
 
 ### Scene settings
 
@@ -119,11 +119,15 @@ Built-in scripts: `PlayerController`, `FollowCamera`, `PlayerController2D`, `Fol
 **Build → Download installable web app** adds a manifest, icons and an offline service worker in a `.zip`, so players can install the game and play offline.
 **Build → Run in new tab** opens a quick build directly.
 By default exports leave out unused assets, meshopt-compress models and re-encode textures as WebP when that is smaller (Project Settings → General).
-The player is about 5.3 MB plus your assets (1.9 MB gzipped), and Rapier's WASM accounts for most of that. Exported games show a loading screen and fade between scenes.
+The player is about 5.3 MB plus your assets (1.9 MB gzipped), and Rapier's WASM accounts for most of that. WebGPU projects use a separate player build that is 0.7 MB larger, so WebGL games don't carry the WebGPU renderer. Exported games show a loading screen and fade between scenes.
 
 ### 2D games
 
 Add a **2D Camera** (orthographic, from Create → 2D) and **Sprites**, and tick **2D** on rigid bodies so they stay in the XY plane. The 2D toggle above the Scene view switches to a flat side view. `PlayerController2D` and `FollowCamera2D` handle running, jumping and a camera that follows with look-ahead. Sky Hopper is a complete example.
+
+### WebGPU
+
+Project Settings → Renderer switches between WebGL and **WebGPU (experimental)**. WebGPU uses three.js's `WebGPURenderer` with node materials. Particles and post-processing have TSL versions, and browsers without WebGPU fall back to WebGL 2 through the same renderer. The viewport switches right away, the stats panel (`` ` ``) shows which backend is running, and exported games follow the setting.
 
 ## Architecture
 
@@ -131,7 +135,7 @@ Add a **2D Camera** (orthographic, from Create → 2D) and **Sprites**, and tick
 src/engine/       runtime with no React or editor code: loop, ECS, input, assets, physics
   physics/        built-in AABB physics, and the Rapier adapter (joints, queries, debug lines)
   navigation/     the walkable grid and A* behind ctx.nav
-  render/         the post-processing pipeline
+  render/         post-processing (WebGL passes and a TSL version for WebGPU)
 src/react/        <GameCanvas>, hooks, stats overlay
 src/editor/
   document.ts     the project format (v2: scenes, prefabs, scripts, settings); prefab expansion and overrides
@@ -143,7 +147,7 @@ src/editor/
                   post-processing, instancing, particles, animation, navigation, timers, audio mixer,
                   game and scene UI, touch controls, fades, collider outlines and handles
   ui/             the editor's React panels
-src/player/       standalone player for exported games (no React, no editor)
+src/player/       standalone player for exported games (no React, no editor); WebGL and WebGPU builds
 e2e/              browser smoke test
 ```
 
@@ -154,7 +158,7 @@ Performance:
 - The fixed-timestep simulation is interpolated, so motion stays smooth at 120/144 Hz.
 - In play mode, identical meshes are drawn as instanced batches (Coin Rush: 101 → 37 draw calls).
 - ECS queries are cached in sparse sets. React reads engine state through stores and never re-renders once per frame.
-- Rapier, the glTF loader, post-processing, export compression and Monaco are lazy-loaded. The editor's first load is about 355 kB gzipped (React, three.js and the app).
+- Rapier, the glTF loader, post-processing, the WebGPU renderer, export compression and Monaco are lazy-loaded. The editor's first load is about 355 kB gzipped (React, three.js and the app).
 
 ## Known limits
 

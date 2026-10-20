@@ -9,7 +9,9 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three'
+import type { WebGPURenderer } from 'three/webgpu'
 import { Assets } from '../assets/Assets'
+import { patchTextureViewSwizzle } from '../render/webgpuCompat'
 import { Transform } from '../components'
 import type { Entity } from '../ecs/component'
 import { World } from '../ecs/World'
@@ -40,7 +42,19 @@ export interface EngineOptions {
   powerPreference?: WebGLPowerPreference
   /** Register built-in physics, collision and interpolation systems per scene. Default true. */
   physics?: boolean
+  /**
+   * 'webgpu' uses three's WebGPURenderer (falling back to its WebGL 2 backend
+   * where WebGPU is missing). Pass the class as `webgpuRenderer` (imported from
+   * 'three/webgpu'), so apps that never use it don't bundle it, and await `ready`.
+   */
+  renderer?: RendererKind
+  webgpuRenderer?: typeof WebGPURenderer
 }
+
+export type RendererKind = 'webgl' | 'webgpu'
+
+/** The renderer behind an engine: WebGL, or WebGPU (with node materials). */
+export type EngineRenderer = WebGLRenderer | WebGPURenderer
 
 export interface CollisionEvent {
   a: Entity
@@ -112,7 +126,11 @@ export interface RenderPipeline {
 }
 
 export class Engine {
-  readonly renderer: WebGLRenderer
+  readonly renderer: EngineRenderer
+  /** Which renderer this engine was created with. */
+  readonly rendererKind: RendererKind
+  /** Resolves when the renderer can draw (WebGPU initializes asynchronously). */
+  readonly ready: Promise<void>
   readonly canvas: HTMLCanvasElement
   readonly container: HTMLElement
   readonly scene = new Scene()
@@ -162,11 +180,25 @@ export class Engine {
     this.canvas.tabIndex = 0
     this.container.appendChild(this.canvas)
 
-    this.renderer = new WebGLRenderer({
+    const rendererOptions = {
       canvas: this.canvas,
       antialias: options.antialias ?? window.devicePixelRatio < 2,
       powerPreference: options.powerPreference ?? 'high-performance',
-    })
+    } as const
+    this.rendererKind = options.renderer ?? 'webgl'
+    if (this.rendererKind === 'webgpu') {
+      if (!options.webgpuRenderer) throw new Error("renderer: 'webgpu' needs the webgpuRenderer option")
+      const { powerPreference } = rendererOptions
+      const renderer = new options.webgpuRenderer({ ...rendererOptions, powerPreference: powerPreference === 'default' ? undefined : powerPreference })
+      this.renderer = renderer
+      this.ready = renderer.init().then(() => {
+        const device = (renderer.backend as { device?: GPUDevice }).device
+        if (device) patchTextureViewSwizzle(device)
+      })
+    } else {
+      this.renderer = new WebGLRenderer(rendererOptions)
+      this.ready = Promise.resolve()
+    }
     this.renderer.toneMapping = NeutralToneMapping
     // Reset once per frame, so stats count every pass of a multi-pass pipeline.
     this.renderer.info.autoReset = false
@@ -190,6 +222,18 @@ export class Engine {
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(this.container)
     this.resize()
+  }
+
+  /** True when drawing through WebGPURenderer (whatever backend it picked). */
+  get isWebGPU(): boolean {
+    return this.rendererKind === 'webgpu'
+  }
+
+  /** 'WebGL 2', 'WebGPU', or 'WebGL 2 (WebGPU fallback)'. */
+  get backendName(): string {
+    if (!this.isWebGPU) return 'WebGL 2'
+    const backend = (this.renderer as WebGPURenderer).backend as { isWebGPUBackend?: boolean }
+    return backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2 (WebGPU fallback)'
   }
 
   /** Custom render path (post-processing). Setting a new one disposes the old one. */
@@ -320,7 +364,7 @@ export class Engine {
     this.events.clear()
     void this.assets.clear()
     this.renderer.dispose()
-    this.renderer.forceContextLoss()
+    if (this.renderer instanceof WebGLRenderer) this.renderer.forceContextLoss()
     this.canvas.remove()
   }
 
@@ -435,7 +479,7 @@ export class Engine {
     this.stats.set({
       fps: Math.round((this.statFrames * 1000) / elapsed),
       frameMs: this.statCpu / this.statFrames,
-      drawCalls: info.render.calls,
+      drawCalls: 'drawCalls' in info.render ? info.render.drawCalls : info.render.calls,
       triangles: info.render.triangles,
       geometries: info.memory.geometries,
       textures: info.memory.textures,

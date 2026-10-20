@@ -10,6 +10,7 @@ import {
   Matrix4,
   Mesh,
   NormalBlending,
+  type Material,
   type Object3D,
   ShaderMaterial,
   Sphere,
@@ -81,6 +82,38 @@ void main() {
 }
 `
 
+/**
+ * How particles are shaded. The default is GLSL (WebGL); WebGPU engines use a
+ * TSL node material with the same inputs (see particleNodeMaterial.ts).
+ * Per-instance attributes: offset (vec3), color (vec4), size, angle and frame.
+ */
+export interface ParticleMaterial {
+  readonly material: Material
+  setSheet(columns: number, rows: number): void
+  setMap(texture: Texture | null): void
+}
+
+export type ParticleMaterialFactory = () => ParticleMaterial
+
+export function glslParticleMaterial(): ParticleMaterial {
+  const material = new ShaderMaterial({
+    uniforms: UniformsUtils.merge([UniformsLib.fog, { map: { value: null }, useMap: { value: false }, sheet: { value: new Vector2(1, 1) } }]),
+    vertexShader,
+    fragmentShader,
+    transparent: true,
+    depthWrite: false,
+    fog: true,
+  })
+  return {
+    material,
+    setSheet: (columns, rows) => material.uniforms.sheet.value.set(columns, rows),
+    setMap: (texture) => {
+      material.uniforms.map.value = texture
+      material.uniforms.useMap.value = texture !== null
+    },
+  }
+}
+
 /** Seconds an editor preview waits before replaying a finished effect. */
 const PREVIEW_PAUSE = 0.6
 
@@ -112,7 +145,8 @@ export function lifeCurve(curve: LifeCurve, t: number): number {
  * `update` once per frame.
  */
 export class ParticleEmitter implements ParticlesApi {
-  readonly object: Mesh<InstancedBufferGeometry, ShaderMaterial>
+  readonly object: Mesh<InstancedBufferGeometry, Material>
+  private readonly shading: ParticleMaterial
   config: ParticlesDoc
   /** Editor preview: always plays, and replays once a finite effect ends. */
   readonly preview: boolean
@@ -155,20 +189,13 @@ export class ParticleEmitter implements ParticlesApi {
 
   constructor(
     config: ParticlesDoc,
-    options: { preview?: boolean; random?: () => number } = {},
+    options: { preview?: boolean; random?: () => number; material?: ParticleMaterialFactory } = {},
   ) {
     this.config = config
     this.preview = options.preview ?? false
     this.random = options.random ?? Math.random
-    const material = new ShaderMaterial({
-      uniforms: UniformsUtils.merge([UniformsLib.fog, { map: { value: null }, useMap: { value: false }, sheet: { value: null } }]),
-      vertexShader,
-      fragmentShader,
-      transparent: true,
-      depthWrite: false,
-      fog: true,
-    })
-    this.object = new Mesh(new InstancedBufferGeometry(), material)
+    this.shading = (options.material ?? glslParticleMaterial)()
+    this.object = new Mesh(new InstancedBufferGeometry(), this.shading.material)
     this.object.name = 'Particles'
     this.object.frustumCulled = false
     this.object.castShadow = false
@@ -205,7 +232,7 @@ export class ParticleEmitter implements ParticlesApi {
       material.needsUpdate = true
     }
     this.setWorldSpace(config.worldSpace)
-    material.uniforms.sheet.value = new Vector2(Math.max(1, Math.round(config.sheetColumns)), Math.max(1, Math.round(config.sheetRows)))
+    this.shading.setSheet(Math.max(1, Math.round(config.sheetColumns)), Math.max(1, Math.round(config.sheetRows)))
   }
 
   /** True for a sub-emitter, which only emits when its parent's particles are born or die. */
@@ -219,9 +246,7 @@ export class ParticleEmitter implements ParticlesApi {
   }
 
   setTexture(texture: Texture | null): void {
-    const uniforms = this.object.material.uniforms
-    uniforms.map.value = texture
-    uniforms.useMap.value = texture !== null
+    this.shading.setMap(texture)
   }
 
   play(): void {

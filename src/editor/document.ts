@@ -501,6 +501,8 @@ export interface ProjectSettings {
   exportIncludeUnused: boolean
   /** Exports compress models (meshopt) and re-encode textures (WebP). */
   exportCompress: boolean
+  /** WebGPU draws through three's node-material renderer (WebGL 2 where WebGPU is missing). */
+  renderer: 'webgl' | 'webgpu'
 }
 
 export interface InputActionDoc {
@@ -549,6 +551,7 @@ export function defaultProjectSettings(): ProjectSettings {
     touchButtons: ['Jump', 'Fire', 'Sprint'],
     exportIncludeUnused: false,
     exportCompress: true,
+    renderer: 'webgl',
   }
 }
 

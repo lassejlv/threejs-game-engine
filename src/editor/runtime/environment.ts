@@ -14,13 +14,15 @@ import {
   SRGBColorSpace,
   type Texture,
   UVMapping,
-  type WebGLRenderTarget,
+  WebGLRenderer,
 } from 'three'
 import { type Engine, postEnabled } from '../../engine'
 import type { PostProcessing } from '../../engine/render/PostProcessing'
+import type { PostProcessingGPU } from '../../engine/render/PostProcessingGPU'
 import { log } from '../console'
 import type { SceneSettings, ShadowQuality } from '../document'
 import type { AssetResolver } from './nodes'
+import { webgpuKit } from './rendererKit'
 import { applySettings } from './settings'
 
 const SHADOW_MAP_SIZE: Record<ShadowQuality, number> = { off: 1024, low: 1024, medium: 2048, high: 4096 }
@@ -42,8 +44,10 @@ export class SceneEnvironment {
   private sky: Texture | null = null
   /** The sky drawn flat across the screen, for orthographic cameras (an equirect sky needs perspective). */
   private flatSky: Texture | null = null
-  private envTarget: WebGLRenderTarget | null = null
-  private post: PostProcessing | null = null
+  /** Image-based lighting: a PMREM render target (WebGL), or the equirect sky itself (WebGPU prefilters it). */
+  private envTexture: Texture | null = null
+  private envResource: { dispose(): void } | null = null
+  private post: PostProcessing | PostProcessingGPU | null = null
   private postLoading = false
   private settings: SceneSettings | null = null
   private disposed = false
@@ -74,7 +78,7 @@ export class SceneEnvironment {
     this.disposed = true
     this.sky?.dispose()
     this.flatSky?.dispose()
-    this.envTarget?.dispose()
+    this.envResource?.dispose()
     if (this.engine.scene.onBeforeRender === this.swapSky) this.engine.scene.onBeforeRender = () => {}
     if (this.post && this.engine.pipeline === this.post) this.engine.pipeline = null
   }
@@ -86,17 +90,18 @@ export class SceneEnvironment {
       this.skyKey = key
       this.sky?.dispose()
       this.flatSky?.dispose()
-      this.envTarget?.dispose()
+      this.envResource?.dispose()
       this.sky = null
       this.flatSky = null
-      this.envTarget = null
+      this.envTexture = null
+      this.envResource = null
       if (s.sky === 'gradient') this.setSky(gradientTexture(s.skyTop, s.skyHorizon, s.skyBottom), s)
       else if (s.sky === 'texture' && s.skyTexture) this.loadSkyTexture(s.skyTexture, key)
       else if (s.environment) this.setSky(gradientTexture(s.background, s.background, s.background), s, false)
     }
     // applySettings resets the background to the flat color; put the sky back.
     if (this.sky && s.sky !== 'color') scene.background = this.sky
-    scene.environment = s.environment && this.envTarget ? this.envTarget.texture : null
+    scene.environment = s.environment ? this.envTexture : null
     scene.environmentIntensity = s.environmentIntensity
   }
 
@@ -127,10 +132,17 @@ export class SceneEnvironment {
       this.flatSky.mapping = UVMapping
       this.flatSky.needsUpdate = true
     }
-    if (s.environment) {
-      const pmrem = new PMREMGenerator(this.engine.renderer)
-      this.envTarget = pmrem.fromEquirectangular(texture)
+    const { renderer } = this.engine
+    if (s.environment && renderer instanceof WebGLRenderer) {
+      const pmrem = new PMREMGenerator(renderer)
+      const target = pmrem.fromEquirectangular(texture)
       pmrem.dispose()
+      this.envTexture = target.texture
+      this.envResource = target
+    } else if (s.environment) {
+      this.envTexture = texture
+      if (!background) this.envResource = texture
+      return
     }
     if (!background) texture.dispose()
   }
@@ -176,11 +188,16 @@ export class SceneEnvironment {
     if (this.postLoading) return
     // Loaded on demand so scenes without effects don't pay for the passes.
     this.postLoading = true
-    void import('../../engine/render/PostProcessing').then(({ PostProcessing }) => {
+    const { renderer } = engine
+    const create =
+      renderer instanceof WebGLRenderer
+        ? import('../../engine/render/PostProcessing').then(({ PostProcessing }) => () => new PostProcessing(renderer, engine.scene, engine.camera))
+        : Promise.resolve(() => new (webgpuKit().PostProcessing)(renderer, engine.scene, engine.camera))
+    void create.then((make) => {
       this.postLoading = false
       const latest = this.settings
       if (this.disposed || !latest || !postEnabled(latest)) return
-      this.post = new PostProcessing(engine.renderer, engine.scene, engine.camera)
+      this.post = make()
       this.post.set(latest)
       engine.pipeline = this.post
     })

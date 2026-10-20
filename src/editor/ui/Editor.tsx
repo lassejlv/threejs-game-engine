@@ -20,6 +20,7 @@ import {
 import { editorCamera, getOrbit } from '../runtime/editorCamera'
 import { createEditScene, sceneView } from '../runtime/editScene'
 import { createPlayScene } from '../runtime/playScene'
+import { installWebGPUKit, type WebGPUKit } from '../runtime/rendererKit'
 import { BottomPanel } from './ProjectPanel'
 import { Hierarchy } from './Hierarchy'
 import { Icon } from './icons'
@@ -51,6 +52,8 @@ export function Editor() {
   const view = useStore(editorStore, (s) => s.view)
   const showColliders = useStore(editorStore, (s) => s.showColliders)
   const view2D = useStore(editorStore, (s) => s.view2D)
+  const renderer = useStore(editorStore, (s) => s.doc.settings.renderer)
+  const gpuKit = useWebGPUKit(renderer === 'webgpu')
 
   const scene = useMemo(
     () =>
@@ -117,17 +120,22 @@ export function Editor() {
           </button>
         </div>
         <div className="viewport-stage">
-          <GameCanvas
-            style={{ position: 'absolute', inset: 0 }}
-            scene={scene}
-            onReady={(e) => {
-              attachEngine(e)
-              setEngine(e)
-              if (import.meta.env.DEV) Object.assign(window, { __engine: e })
-            }}
-          >
-            <DebugOverlay />
-          </GameCanvas>
+          {(renderer === 'webgl' || gpuKit) && (
+            <GameCanvas
+              // A different renderer needs a new engine.
+              key={renderer}
+              options={{ renderer, webgpuRenderer: gpuKit?.Renderer }}
+              style={{ position: 'absolute', inset: 0 }}
+              scene={scene}
+              onReady={(e) => {
+                attachEngine(e)
+                setEngine(e)
+                if (import.meta.env.DEV) Object.assign(window, { __engine: e })
+              }}
+            >
+              <DebugOverlay />
+            </GameCanvas>
+          )}
           <ScriptEditor />
         </div>
       </main>
@@ -196,4 +204,24 @@ function useShortcuts() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+}
+
+let loadedKit: WebGPUKit | null = null
+
+/** Loads the WebGPU renderer pieces the first time a project asks for them. */
+function useWebGPUKit(wanted: boolean): WebGPUKit | null {
+  const [kit, setKit] = useState(loadedKit)
+  useEffect(() => {
+    if (!wanted || kit) return
+    let cancelled = false
+    void import('../runtime/webgpuKit').then(({ webgpuKit }) => {
+      installWebGPUKit(webgpuKit)
+      loadedKit = webgpuKit
+      if (!cancelled) setKit(webgpuKit)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [wanted, kit])
+  return kit
 }

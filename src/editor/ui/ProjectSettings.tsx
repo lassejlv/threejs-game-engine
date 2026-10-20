@@ -284,6 +284,19 @@ function GeneralSettings() {
         Exported games begin in the start scene (Play in the editor runs the scene you have open). The name is the exported game's
         title, and saves made with ctx.save are kept per project name.
       </p>
+      <SelectField
+        label="Renderer"
+        value={doc.settings.renderer}
+        options={[
+          ['webgl', 'WebGL'],
+          ['webgpu', 'WebGPU (experimental)'],
+        ]}
+        onChange={(renderer) => updateProject({ settings: { ...doc.settings, renderer } }, { label: 'Renderer' })}
+      />
+      <p className="hint">
+        WebGPU uses three.js node materials. Browsers without WebGPU fall back to WebGL 2 through the same renderer. The viewport switches
+        renderer right away; the stats panel shows which backend is running.
+      </p>
       <CheckField
         label="Compress exports"
         value={doc.settings.exportCompress}
