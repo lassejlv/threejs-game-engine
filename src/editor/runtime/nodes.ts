@@ -29,10 +29,14 @@ import {
   TorusGeometry,
   Float32BufferAttribute,
   MathUtils,
+  DoubleSide,
+  FrontSide,
+  RepeatWrapping,
+  type Texture,
 } from 'three'
 import { createStore, type Engine } from '../../engine'
 import { log } from '../console'
-import type { EntityDoc, Primitive } from '../document'
+import type { EntityDoc, MeshDoc, Primitive } from '../document'
 import { Animator } from './animator'
 import { shadowMapSize } from './environment'
 import { ParticleEmitter } from './particles'
@@ -69,6 +73,12 @@ function primitive(shape: Primitive): BufferGeometry {
 const proxyGeometry = new OctahedronGeometry(0.25)
 const arrowGeometry = new BufferGeometry().setAttribute('position', new Float32BufferAttribute([0, 0, 0, 0, 0, -1.5], 3))
 const proxyColors = { light: 0xffd25a, camera: 0x7fd1ff, audio: 0xff8fb4, particles: 0xffa53a, empty: 0xb0b8c8 }
+
+/** Meshes with equal keys look identical apart from their transform, so they can be drawn instanced. */
+export function materialKey(m: MeshDoc): string {
+  return JSON.stringify([m.shape, m.color, m.metalness, m.roughness, m.emissive, m.emissiveIntensity, m.map, m.normalMap, m.normalScale,
+    m.roughnessMap, m.metalnessMap, m.emissiveMap, m.tiling, m.opacity, m.doubleSided, m.castShadow, m.receiveShadow])
+}
 
 export function isShared(geometry: BufferGeometry): boolean {
   return geometry === proxyGeometry || geometry === arrowGeometry || [...primitives.values()].includes(geometry)
@@ -138,17 +148,19 @@ export class NodeFactory {
         roughness: m.roughness,
         emissive: new Color(m.emissive),
         emissiveIntensity: m.emissiveIntensity,
+        opacity: m.opacity,
+        transparent: m.opacity < 1,
+        side: m.doubleSided ? DoubleSide : FrontSide,
       })
-      if (m.map) {
-        const url = this.library.url(m.map)
-        if (url) {
-          void this.engine.assets.texture(url).then((texture) => {
-            material.map = texture
-            material.needsUpdate = true
-          })
-        }
-      }
+      material.normalScale.setScalar(m.normalScale)
+      this.loadMap(material, 'map', m.map, m.tiling, true)
+      this.loadMap(material, 'emissiveMap', m.emissiveMap, m.tiling, true)
+      this.loadMap(material, 'normalMap', m.normalMap, m.tiling, false)
+      this.loadMap(material, 'roughnessMap', m.roughnessMap, m.tiling, false)
+      this.loadMap(material, 'metalnessMap', m.metalnessMap, m.tiling, false)
       const mesh = new Mesh(primitive(m.shape), material)
+      // Transparent meshes need per-object depth sorting, so they are never batched.
+      if (m.opacity >= 1) mesh.userData.batchKey = materialKey(m)
       mesh.castShadow = m.castShadow
       mesh.receiveShadow = m.receiveShadow
       visual.add(mesh)
@@ -208,6 +220,28 @@ export class NodeFactory {
     }
 
     if (this.editorMode) this.addProxy(visual, entity)
+  }
+
+  /** Loads a texture asset into a material slot. Color maps are sRGB; data maps (normal, roughness...) are linear. */
+  private loadMap(
+    material: MeshStandardMaterial,
+    slot: 'map' | 'emissiveMap' | 'normalMap' | 'roughnessMap' | 'metalnessMap',
+    id: string | null,
+    tiling: [number, number],
+    srgb: boolean,
+  ): void {
+    const url = id && this.library.url(id)
+    if (!url) return
+    void this.engine.assets.texture(url, { srgb }).then((cached) => {
+      // A per-material copy (sharing the image) so tiling doesn't leak into other materials.
+      const texture = cached.clone()
+      texture.userData.owned = true
+      texture.wrapS = texture.wrapT = RepeatWrapping
+      texture.repeat.set(tiling[0], tiling[1])
+      texture.needsUpdate = true
+      material[slot] = texture
+      material.needsUpdate = true
+    })
   }
 
   /**
@@ -347,8 +381,10 @@ export function disposeVisual(visual: Object3D): void {
     const mesh = o as Mesh
     if (mesh.geometry && !isShared(mesh.geometry)) mesh.geometry.dispose()
     const material = mesh.material as Material | Material[] | undefined
-    if (Array.isArray(material)) for (const m of material) m.dispose()
-    else material?.dispose()
+    for (const m of Array.isArray(material) ? material : material ? [material] : []) {
+      for (const value of Object.values(m)) if ((value as Texture | null)?.userData?.owned) (value as Texture).dispose()
+      m.dispose()
+    }
     if ('isLight' in o && 'dispose' in o) (o as unknown as { dispose(): void }).dispose()
     if (o instanceof Audio && o.isPlaying) o.stop()
   })

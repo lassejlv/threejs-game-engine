@@ -21,8 +21,20 @@ export interface MeshDoc {
   roughness: number
   emissive: string
   emissiveIntensity: number
-  /** Texture asset id. */
+  /** Texture asset id (base color). */
   map: string | null
+  /** Texture asset ids for the other PBR channels. */
+  normalMap: string | null
+  normalScale: number
+  roughnessMap: string | null
+  metalnessMap: string | null
+  emissiveMap: string | null
+  /** Texture repeats across the surface (U, V). */
+  tiling: [number, number]
+  /** Below 1 the surface is see-through. */
+  opacity: number
+  /** Render both faces (planes seen from below, leaves). */
+  doubleSided: boolean
   castShadow: boolean
   receiveShadow: boolean
 }
@@ -272,6 +284,14 @@ export const componentDefaults = {
     emissive: '#000000',
     emissiveIntensity: 1,
     map: null,
+    normalMap: null,
+    normalScale: 1,
+    roughnessMap: null,
+    metalnessMap: null,
+    emissiveMap: null,
+    tiling: [1, 1],
+    opacity: 1,
+    doubleSided: false,
     castShadow: true,
     receiveShadow: true,
   }),
@@ -565,6 +585,7 @@ function migrateEntity(raw: EntityDoc): EntityDoc {
     const { kinematic, ...rest } = legacy
     e.rigidBody = { ...componentDefaults.rigidBody(), type: kinematic ? 'kinematic' : 'dynamic', ...rest }
   }
+  if (e.mesh) e.mesh = { ...componentDefaults.mesh(), ...e.mesh }
   if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
   if (e.audio) e.audio = { ...componentDefaults.audio(), ...e.audio }
   if (e.model) e.model = { ...componentDefaults.model(), ...e.model }

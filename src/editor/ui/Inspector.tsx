@@ -300,6 +300,21 @@ function EntityInspector({ entity, doc }: { entity: EntityDoc; doc: ProjectDoc }
           />
           <ColorField label="Color" value={entity.mesh.color} onChange={(color) => setComponent('mesh', { color }, 'color')} />
           <TextureField value={entity.mesh.map} onChange={(map) => setComponent('mesh', { map }, 'map')} />
+          <AssetSelect kind="texture" label="Normal map" value={entity.mesh.normalMap} onChange={(normalMap) => setComponent('mesh', { normalMap }, 'nmap')} />
+          {entity.mesh.normalMap && (
+            <NumberField label="Normal strength" value={entity.mesh.normalScale} step={0.05} onChange={(normalScale) => setComponent('mesh', { normalScale }, 'ns')} />
+          )}
+          <AssetSelect kind="texture" label="Roughness map" value={entity.mesh.roughnessMap} onChange={(roughnessMap) => setComponent('mesh', { roughnessMap }, 'rmap')} />
+          <AssetSelect kind="texture" label="Metalness map" value={entity.mesh.metalnessMap} onChange={(metalnessMap) => setComponent('mesh', { metalnessMap }, 'mmap')} />
+          <AssetSelect kind="texture" label="Emissive map" value={entity.mesh.emissiveMap} onChange={(emissiveMap) => setComponent('mesh', { emissiveMap }, 'emap')} />
+          {(entity.mesh.map || entity.mesh.normalMap || entity.mesh.roughnessMap || entity.mesh.metalnessMap || entity.mesh.emissiveMap) && (
+            <>
+              <NumberField label="Tiling U" value={entity.mesh.tiling[0]} step={0.1} min={0.01} onChange={(u) => setComponent('mesh', { tiling: [u, entity.mesh!.tiling[1]] }, 'tu')} />
+              <NumberField label="Tiling V" value={entity.mesh.tiling[1]} step={0.1} min={0.01} onChange={(v) => setComponent('mesh', { tiling: [entity.mesh!.tiling[0], v] }, 'tv')} />
+            </>
+          )}
+          <NumberField label="Opacity" value={entity.mesh.opacity} step={0.05} min={0} max={1} onChange={(opacity) => setComponent('mesh', { opacity }, 'op')} />
+          <CheckField label="Double sided" value={entity.mesh.doubleSided} onChange={(doubleSided) => setComponent('mesh', { doubleSided }, 'ds')} />
           <NumberField label="Metalness" value={entity.mesh.metalness} step={0.01} min={0} max={1} onChange={(metalness) => setComponent('mesh', { metalness }, 'metal')} />
           <NumberField label="Roughness" value={entity.mesh.roughness} step={0.01} min={0} max={1} onChange={(roughness) => setComponent('mesh', { roughness }, 'rough')} />
           <ColorField label="Emissive" value={entity.mesh.emissive} onChange={(emissive) => setComponent('mesh', { emissive }, 'em')} />

@@ -18,6 +18,7 @@ import {
 } from '../../engine'
 import { log } from '../console'
 import { type ColliderDoc, depthFirst, type EntityDoc, expandEntities, instantiatePrefab, type ProjectDoc } from '../document'
+import { MeshBatcher } from './batcher'
 import { type AssetResolver, NodeFactory } from './nodes'
 import type { ParticleEmitter } from './particles'
 import { PlaySession } from './playSession'
@@ -49,6 +50,7 @@ export class PlayBuilder {
     private readonly engine: Engine,
     private readonly factory: NodeFactory,
     private readonly session: PlaySession,
+    private readonly batcher?: MeshBatcher,
   ) {}
 
   /** `entities` must be parent-first. Returns doc id → entity, plus the main camera if one was built. */
@@ -70,6 +72,7 @@ export class PlayBuilder {
       const parentNode = e.parent ? nodes.get(e.parent) : parent?.node
       parentNode?.add(node)
       nodes.set(e.id, node)
+      if (this.batcher) this.batcher.add(node.userData.visual as Group)
       const entity = world.create()
       ids.set(e.id, entity)
       world.add(entity, Transform, node) // root nodes join the scene here
@@ -141,7 +144,8 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
       const listener = new AudioListener()
       const session = new PlaySession(engine, doc, physics, listener, options.assets)
       const factory = new NodeFactory(engine, options.assets, false, listener)
-      const builder = new PlayBuilder(engine, factory, session)
+      const batcher = new MeshBatcher(engine.scene)
+      const builder = new PlayBuilder(engine, factory, session, batcher)
       session.connect({
         sceneName: scene.name,
         spawn: (prefabName, spawn) => {
@@ -188,6 +192,7 @@ export function createPlayScene(doc: ProjectDoc, sceneId: string, options: PlayO
         },
       })
       engine.addSystem({ name: 'particles', phase: 'late', order: 100, run: (_engine, dt) => factory.updateParticles(dt) })
+      engine.addSystem({ name: 'batching', phase: 'render', order: -10, run: () => batcher.update() })
       options.onStart?.(engine)
     },
   })
