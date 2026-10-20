@@ -12,10 +12,10 @@ import {
   expandEntities,
   instantiatePrefab,
   ownerId,
-  parseProject,
   type PrefabDoc,
   subtreeIds,
 } from './document'
+import { parseProject } from './projectFormat'
 import { sampleProject } from './sample'
 import { compileScript } from './scripting'
 
@@ -62,7 +62,7 @@ describe('document', () => {
 
   it('upgrades version 1 files to a single scene', () => {
     const doc = parseProject({ version: 1, name: 'Old', settings: {}, entities: tree(), scripts: [] })
-    expect(doc.version).toBe(2)
+    expect(doc.version).toBe(3)
     expect(doc.scenes).toHaveLength(1)
     expect(doc.scenes[0].entities).toHaveLength(4)
   })

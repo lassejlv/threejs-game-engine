@@ -1,0 +1,430 @@
+{
+  "version": 3,
+  "name": "Third Game",
+  "settings": {
+    "layerNames": [
+      "Default",
+      "Player",
+      "Enemy",
+      "Projectile",
+      "Pickup",
+      "Layer 5",
+      "Layer 6",
+      "Layer 7",
+      "Layer 8",
+      "Layer 9",
+      "Layer 10",
+      "Layer 11",
+      "Layer 12",
+      "Layer 13",
+      "Layer 14",
+      "Layer 15"
+    ],
+    "layerCollisions": [
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535
+    ],
+    "inputActions": [
+      {
+        "name": "Jump",
+        "keys": [
+          "Space",
+          "GamepadA"
+        ]
+      },
+      {
+        "name": "Sprint",
+        "keys": [
+          "ShiftLeft",
+          "ShiftRight",
+          "GamepadRB"
+        ]
+      },
+      {
+        "name": "Fire",
+        "keys": [
+          "KeyE",
+          "GamepadX"
+        ]
+      },
+      {
+        "name": "Interact",
+        "keys": [
+          "KeyF",
+          "GamepadY"
+        ]
+      }
+    ],
+    "inputAxes": [
+      {
+        "name": "MoveX",
+        "negative": [
+          "KeyA",
+          "ArrowLeft"
+        ],
+        "positive": [
+          "KeyD",
+          "ArrowRight"
+        ],
+        "gamepadAxis": 0,
+        "invert": false
+      },
+      {
+        "name": "MoveY",
+        "negative": [
+          "KeyS",
+          "ArrowDown"
+        ],
+        "positive": [
+          "KeyW",
+          "ArrowUp"
+        ],
+        "gamepadAxis": 1,
+        "invert": true
+      },
+      {
+        "name": "LookX",
+        "negative": [],
+        "positive": [],
+        "gamepadAxis": 2,
+        "invert": false
+      },
+      {
+        "name": "LookY",
+        "negative": [],
+        "positive": [],
+        "gamepadAxis": 3,
+        "invert": false
+      }
+    ],
+    "touchControls": "auto",
+    "touchButtons": [
+      "Jump",
+      "Fire",
+      "Sprint"
+    ],
+    "exportIncludeUnused": false,
+    "exportCompress": true,
+    "renderer": "webgpu"
+  },
+  "scenes": [
+    {
+      "id": "main",
+      "name": "Main",
+      "settings": {
+        "background": "#a8cbe8",
+        "ambientColor": "#ffffff",
+        "ambientIntensity": 0.4,
+        "fog": false,
+        "fogColor": "#a8cbe8",
+        "fogNear": 50,
+        "fogFar": 200,
+        "gravity": 25,
+        "sky": "color",
+        "skyTop": "#4f86d1",
+        "skyHorizon": "#cfe2f3",
+        "skyBottom": "#5e6b55",
+        "skyTexture": null,
+        "environment": false,
+        "environmentIntensity": 1,
+        "shadows": "medium",
+        "exposure": 1,
+        "bloom": false,
+        "bloomStrength": 0.6,
+        "bloomRadius": 0.4,
+        "bloomThreshold": 0.9,
+        "vignette": 0,
+        "saturation": 1,
+        "contrast": 1,
+        "navigation": {
+          "cellSize": 0.5,
+          "agentRadius": 0.4,
+          "agentHeight": 1.8,
+          "maxStep": 0.45,
+          "maxSlope": 45
+        },
+        "music": "",
+        "musicVolume": 0.8
+      },
+      "entities": [
+        {
+          "id": "cam",
+          "name": "Main Camera",
+          "parent": null,
+          "active": true,
+          "transform": {
+            "position": [
+              0,
+              4,
+              10
+            ],
+            "rotation": [
+              -15,
+              0,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "scripts": [],
+          "camera": {
+            "fov": 60,
+            "near": 0.1,
+            "far": 1000,
+            "main": true,
+            "projection": "perspective",
+            "orthoSize": 6
+          }
+        },
+        {
+          "id": "sun",
+          "name": "Directional Light",
+          "parent": null,
+          "active": true,
+          "transform": {
+            "position": [
+              8,
+              14,
+              6
+            ],
+            "rotation": [
+              -55,
+              40,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "scripts": [],
+          "light": {
+            "type": "directional",
+            "color": "#ffffff",
+            "groundColor": "#444444",
+            "intensity": 2,
+            "distance": 0,
+            "angle": 30,
+            "castShadow": true,
+            "shadowArea": 40
+          }
+        },
+        {
+          "id": "ground",
+          "name": "Ground",
+          "parent": null,
+          "active": true,
+          "transform": {
+            "position": [
+              0,
+              -0.5,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              30,
+              1,
+              30
+            ]
+          },
+          "scripts": [],
+          "mesh": {
+            "shape": "box",
+            "color": "#7a8a6a",
+            "metalness": 0,
+            "roughness": 0.7,
+            "emissive": "#000000",
+            "emissiveIntensity": 1,
+            "map": null,
+            "normalMap": null,
+            "normalScale": 1,
+            "roughnessMap": null,
+            "metalnessMap": null,
+            "emissiveMap": null,
+            "tiling": [
+              1,
+              1
+            ],
+            "opacity": 1,
+            "doubleSided": false,
+            "castShadow": true,
+            "receiveShadow": true
+          },
+          "collider": {
+            "shape": "box",
+            "size": [
+              1,
+              1,
+              1
+            ],
+            "radius": 0.5,
+            "height": 1,
+            "center": [
+              0,
+              0,
+              0
+            ],
+            "trigger": false,
+            "friction": 0.5,
+            "layer": 0
+          }
+        },
+        {
+          "id": "player",
+          "name": "Player",
+          "parent": null,
+          "active": true,
+          "transform": {
+            "position": [
+              0,
+              1,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "scripts": [
+            {
+              "script": "builtin:PlayerController2D",
+              "params": {}
+            }
+          ],
+          "sprite": {
+            "texture": null,
+            "color": "#ffffff",
+            "size": [
+              1,
+              1
+            ],
+            "flipX": false,
+            "pixelArt": true,
+            "sheetColumns": 1,
+            "sheetRows": 1,
+            "fps": 0,
+            "frame": 0,
+            "order": 0
+          },
+          "rigidBody": {
+            "type": "character",
+            "mass": 0,
+            "lockRotation": false,
+            "gravityScale": 1,
+            "damping": 0,
+            "restitution": 0,
+            "planar": true
+          },
+          "collider": {
+            "shape": "capsule",
+            "size": [
+              1,
+              1,
+              1
+            ],
+            "radius": 0.5,
+            "height": 1,
+            "center": [
+              0,
+              0,
+              0
+            ],
+            "trigger": false,
+            "friction": 0.5,
+            "layer": 0
+          },
+          "particles": {
+            "playOnStart": true,
+            "rate": 20,
+            "rateOverDistance": 0,
+            "burst": 0,
+            "duration": 0,
+            "maxParticles": 500,
+            "lifetime": 1.5,
+            "randomness": 0.3,
+            "shape": "point",
+            "radius": 0.5,
+            "boxSize": [
+              1,
+              1,
+              1
+            ],
+            "speed": 2,
+            "spread": 25,
+            "gravity": 0,
+            "drag": 0,
+            "startSize": 0.3,
+            "endSize": 0.1,
+            "startColor": "#ffd27a",
+            "endColor": "#ff5a2a",
+            "startOpacity": 1,
+            "endOpacity": 0,
+            "sizeCurve": "linear",
+            "opacityCurve": "linear",
+            "spin": 0,
+            "sheetColumns": 1,
+            "sheetRows": 1,
+            "sheetMode": "life",
+            "trigger": "none",
+            "blending": "additive",
+            "texture": null,
+            "worldSpace": true,
+            "destroyWhenDone": false
+          }
+        }
+      ],
+      "ui": [
+        {
+          "id": "ui1",
+          "type": "text",
+          "name": "Score",
+          "visible": true,
+          "anchor": "top",
+          "x": 0,
+          "y": 0,
+          "text": "Score {score}",
+          "size": 18,
+          "color": "#ffffff",
+          "background": "",
+          "width": 0,
+          "value": "",
+          "fill": "#4cd97b",
+          "action": "none",
+          "target": "",
+          "image": null
+        }
+      ]
+    }
+  ],
+  "prefabs": [],
+  "scripts": [],
+  "engine": "0.1.0"
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { type EntityDoc, expandEntities, parseProject, type ProjectDoc } from './document'
+import { type EntityDoc, expandEntities, type ProjectDoc } from './document'
+import { parseProject } from './projectFormat'
 import { resolveBehavior } from './scripting'
 import { TEMPLATES } from './templates'
 

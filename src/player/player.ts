@@ -1,6 +1,6 @@
 import { AudioContext as ThreeAudioContext, PerspectiveCamera } from 'three'
 import { logListeners } from '../editor/console'
-import { parseProject } from '../editor/document'
+import { parseProject } from '../editor/projectFormat'
 import type { AssetResolver } from '../editor/runtime/nodes'
 import { createPlayScene } from '../editor/runtime/playScene'
 import { installWebGPUKit, type WebGPUKit } from '../editor/runtime/rendererKit'

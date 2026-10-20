@@ -115,6 +115,22 @@ describe('projects', () => {
     expect(s().projects.map((p) => p.id)).toEqual(['coin-rush'])
   })
 
+  it('skips a broken project file at startup and says why', async () => {
+    const store = freshStore()
+    await store.create({ ...emptyProject(), name: 'Good' })
+    const bad = await store.create({ ...emptyProject(), name: 'Bad' })
+    await store.save(bad.id, { version: 3, name: 'Bad', scenes: 'oops' })
+    localStorage.setItem('ge-last-project:browser', bad.id)
+    const errors: string[] = []
+    const { logListeners } = await import('./console')
+    const listener = (level: string, message: string) => level === 'error' && errors.push(message)
+    logListeners.add(listener)
+    await bootProjects({ store })
+    logListeners.delete(listener)
+    expect(s().doc.name).toBe('Good')
+    expect(errors.join('\n')).toContain('The project has no scenes')
+  })
+
   it('moves the old single-project storage in once, leaving the old data in place', async () => {
     localStorage.setItem('ge-project-v1', JSON.stringify({ ...emptyProject(), name: 'Old Game' }))
     await new Promise<void>((resolve) => {

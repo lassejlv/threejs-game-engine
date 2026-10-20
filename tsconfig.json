@@ -1,11 +1,17 @@
 {
   "compilerOptions": {
     "target": "es2022",
-    "lib": ["es2023", "dom", "dom.iterable"],
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
     "module": "esnext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["vite/client"],
+    "types": [
+      "vite/client"
+    ],
     "strict": true,
     "noEmit": true,
     "isolatedModules": true,
@@ -15,7 +21,12 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "resolveJsonModule": true
   },
-  "include": ["src", "vite.config.ts", "vite.player.config.ts"]
+  "include": [
+    "src",
+    "vite.config.ts",
+    "vite.player.config.ts"
+  ]
 }

@@ -5,6 +5,7 @@ import {
   defaultProjectSettings,
   defaultSettings,
   emptyProject,
+  FORMAT_VERSION,
   type EntityDoc,
   instantiatePrefab,
   type MeshDoc,
@@ -146,7 +147,7 @@ function platformer2D(): ProjectDoc {
   add(place(player, [0, 1.5, 0]))
 
   return {
-    version: 2,
+    version: FORMAT_VERSION,
     name: 'Sky Hopper',
     settings: defaultProjectSettings(),
     scripts: [goal],
@@ -303,7 +304,7 @@ function topDown(): ProjectDoc {
   )
 
   return {
-    version: 2,
+    version: FORMAT_VERSION,
     name: 'Arena',
     settings: defaultProjectSettings(),
     scripts: [camera, shooter, bulletScript, waves],
@@ -491,7 +492,7 @@ function racing(): ProjectDoc {
   )
 
   return {
-    version: 2,
+    version: FORMAT_VERSION,
     name: 'Kart Loop',
     settings: defaultProjectSettings(),
     scripts: [kart, chase, gate],

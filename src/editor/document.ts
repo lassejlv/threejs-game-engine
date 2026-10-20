@@ -555,8 +555,13 @@ export function defaultProjectSettings(): ProjectSettings {
   }
 }
 
+/** The project file format this editor writes (see projectFormat.ts for migrations). */
+export const FORMAT_VERSION = 3
+
 export interface ProjectDoc {
-  version: 2
+  version: typeof FORMAT_VERSION
+  /** Engine version that last saved the file (format 3+). */
+  engine?: string
   name: string
   settings: ProjectSettings
   /** The first scene is where an exported game starts. */
@@ -797,7 +802,7 @@ export function createScene(name: string): SceneDoc {
 }
 
 export function emptyProject(): ProjectDoc {
-  return { version: 2, name: 'Untitled', settings: defaultProjectSettings(), scenes: [createScene('Main')], prefabs: [], scripts: [] }
+  return { version: FORMAT_VERSION, name: 'Untitled', settings: defaultProjectSettings(), scenes: [createScene('Main')], prefabs: [], scripts: [] }
 }
 
 export function prefabRoot(prefab: PrefabDoc): EntityDoc | undefined {
@@ -940,58 +945,6 @@ export function cloneSubtree(entities: EntityDoc[], id: string, suffix = ' (copy
       if (copy.joint?.target && remap.has(copy.joint.target)) copy.joint.target = remap.get(copy.joint.target)!
       return copy
     })
-}
-
-/** Reads a saved project, upgrading older versions. */
-export function parseProject(json: unknown): ProjectDoc {
-  const raw = json as Record<string, unknown> | null
-  if (!raw || typeof raw !== 'object') throw new Error('Not a project file')
-  if (raw.version === 1 && Array.isArray(raw.entities)) {
-    return parseProject({
-      version: 2,
-      name: raw.name,
-      scenes: [{ id: newId(), name: 'Main', settings: raw.settings, entities: raw.entities }],
-      prefabs: [],
-      scripts: raw.scripts,
-    })
-  }
-  if (raw.version !== 2 || !Array.isArray(raw.scenes) || raw.scenes.length === 0) throw new Error('Not a project file')
-  const doc = raw as unknown as ProjectDoc
-  const defaults = defaultProjectSettings()
-  return {
-    version: 2,
-    name: doc.name ?? 'Untitled',
-    settings: { ...defaults, ...doc.settings },
-    scenes: doc.scenes.map((scene) => ({
-      id: scene.id ?? newId(),
-      name: scene.name ?? 'Scene',
-      settings: { ...defaultSettings(), ...scene.settings, navigation: { ...defaultNavSettings(), ...scene.settings?.navigation } },
-      entities: (scene.entities ?? []).map(migrateEntity),
-      ui: (scene.ui ?? []).map((el) => ({ ...createUiElement(el.type ?? 'text', el.name ?? 'UI'), ...el })),
-    })),
-    prefabs: (doc.prefabs ?? []).map((p) => ({ ...p, entities: p.entities.map(migrateEntity) })),
-    scripts: doc.scripts ?? [],
-  }
-}
-
-/** Fills fields added after a file was saved. */
-function migrateEntity(raw: EntityDoc): EntityDoc {
-  const e: EntityDoc = { ...createEntity(raw.name ?? 'Entity'), ...raw, scripts: raw.scripts ?? [] }
-  if (e.rigidBody) {
-    const legacy = e.rigidBody as Partial<RigidBodyDoc> & { kinematic?: boolean }
-    const { kinematic, ...rest } = legacy
-    e.rigidBody = { ...componentDefaults.rigidBody(), type: kinematic ? 'kinematic' : 'dynamic', ...rest }
-  }
-  if (e.mesh) e.mesh = { ...componentDefaults.mesh(), ...e.mesh }
-  if (e.collider) e.collider = { ...componentDefaults.collider(), ...e.collider }
-  if (e.joint) e.joint = { ...componentDefaults.joint(), ...e.joint }
-  if (e.terrain) e.terrain = { ...componentDefaults.terrain(), ...e.terrain }
-  if (e.camera) e.camera = { ...componentDefaults.camera(), ...e.camera }
-  if (e.sprite) e.sprite = { ...componentDefaults.sprite(), ...e.sprite }
-  if (e.audio) e.audio = { ...componentDefaults.audio(), ...e.audio }
-  if (e.model) e.model = { ...componentDefaults.model(), ...e.model }
-  if (e.particles) e.particles = { ...componentDefaults.particles(), ...e.particles }
-  return e
 }
 
 /**

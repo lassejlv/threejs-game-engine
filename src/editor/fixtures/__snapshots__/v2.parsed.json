@@ -1,0 +1,370 @@
+{
+  "version": 3,
+  "name": "Second Game",
+  "engine": "pre-1.0",
+  "settings": {
+    "layerNames": [
+      "Default",
+      "Player"
+    ],
+    "layerCollisions": [
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535,
+      65535
+    ],
+    "inputActions": [
+      {
+        "name": "Jump",
+        "keys": [
+          "Space",
+          "GamepadA"
+        ]
+      },
+      {
+        "name": "Sprint",
+        "keys": [
+          "ShiftLeft",
+          "ShiftRight",
+          "GamepadRB"
+        ]
+      },
+      {
+        "name": "Fire",
+        "keys": [
+          "KeyE",
+          "GamepadX"
+        ]
+      },
+      {
+        "name": "Interact",
+        "keys": [
+          "KeyF",
+          "GamepadY"
+        ]
+      }
+    ],
+    "inputAxes": [
+      {
+        "name": "MoveX",
+        "negative": [
+          "KeyA",
+          "ArrowLeft"
+        ],
+        "positive": [
+          "KeyD",
+          "ArrowRight"
+        ],
+        "gamepadAxis": 0,
+        "invert": false
+      },
+      {
+        "name": "MoveY",
+        "negative": [
+          "KeyS",
+          "ArrowDown"
+        ],
+        "positive": [
+          "KeyW",
+          "ArrowUp"
+        ],
+        "gamepadAxis": 1,
+        "invert": true
+      },
+      {
+        "name": "LookX",
+        "negative": [],
+        "positive": [],
+        "gamepadAxis": 2,
+        "invert": false
+      },
+      {
+        "name": "LookY",
+        "negative": [],
+        "positive": [],
+        "gamepadAxis": 3,
+        "invert": false
+      }
+    ],
+    "touchControls": "auto",
+    "touchButtons": [
+      "Jump",
+      "Fire",
+      "Sprint"
+    ],
+    "exportIncludeUnused": false,
+    "exportCompress": true,
+    "renderer": "webgl"
+  },
+  "scenes": [
+    {
+      "id": "level",
+      "name": "Level",
+      "settings": {
+        "background": "#101820",
+        "ambientColor": "#ffffff",
+        "ambientIntensity": 0.4,
+        "fog": true,
+        "fogColor": "#a8cbe8",
+        "fogNear": 50,
+        "fogFar": 200,
+        "gravity": 25,
+        "sky": "color",
+        "skyTop": "#4f86d1",
+        "skyHorizon": "#cfe2f3",
+        "skyBottom": "#5e6b55",
+        "skyTexture": null,
+        "environment": false,
+        "environmentIntensity": 1,
+        "shadows": "medium",
+        "exposure": 1,
+        "bloom": false,
+        "bloomStrength": 0.6,
+        "bloomRadius": 0.4,
+        "bloomThreshold": 0.9,
+        "vignette": 0,
+        "saturation": 1,
+        "contrast": 1,
+        "navigation": {
+          "cellSize": 0.5,
+          "agentRadius": 0.4,
+          "agentHeight": 1.8,
+          "maxStep": 0.45,
+          "maxSlope": 45
+        },
+        "music": "",
+        "musicVolume": 0.8
+      },
+      "entities": [
+        {
+          "id": "ground",
+          "name": "Ground",
+          "parent": null,
+          "active": true,
+          "transform": {
+            "position": [
+              0,
+              -0.5,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              20,
+              1,
+              20
+            ]
+          },
+          "scripts": [],
+          "mesh": {
+            "shape": "box",
+            "color": "#557744",
+            "metalness": 0,
+            "roughness": 0.7,
+            "emissive": "#000000",
+            "emissiveIntensity": 1,
+            "map": null,
+            "normalMap": null,
+            "normalScale": 1,
+            "roughnessMap": null,
+            "metalnessMap": null,
+            "emissiveMap": null,
+            "tiling": [
+              1,
+              1
+            ],
+            "opacity": 1,
+            "doubleSided": false,
+            "castShadow": true,
+            "receiveShadow": true
+          },
+          "collider": {
+            "shape": "box",
+            "size": [
+              1,
+              1,
+              1
+            ],
+            "radius": 0.5,
+            "height": 1,
+            "center": [
+              0,
+              0,
+              0
+            ],
+            "trigger": false,
+            "friction": 0.5,
+            "layer": 0
+          }
+        },
+        {
+          "id": "e1",
+          "name": "Enemy 1",
+          "parent": null,
+          "active": true,
+          "transform": {
+            "position": [
+              3,
+              1,
+              0
+            ],
+            "rotation": [
+              0,
+              90,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "scripts": [],
+          "prefab": "enemy",
+          "overrides": {
+            "enemy-root": {
+              "mesh": {
+                "color": "#ff0000"
+              }
+            }
+          }
+        },
+        {
+          "id": "sun",
+          "name": "Sun",
+          "parent": null,
+          "active": true,
+          "transform": {
+            "position": [
+              5,
+              10,
+              5
+            ],
+            "rotation": [
+              -50,
+              30,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "scripts": [],
+          "light": {
+            "type": "directional",
+            "color": "#ffffff",
+            "intensity": 2,
+            "castShadow": true
+          }
+        }
+      ],
+      "ui": [
+        {
+          "id": "ui1",
+          "type": "text",
+          "name": "Score",
+          "visible": true,
+          "anchor": "top",
+          "x": 0,
+          "y": 0,
+          "text": "Score {score}",
+          "size": 18,
+          "color": "#ffffff",
+          "background": "",
+          "width": 0,
+          "value": "",
+          "fill": "#4cd97b",
+          "action": "none",
+          "target": "",
+          "image": null
+        }
+      ]
+    }
+  ],
+  "prefabs": [
+    {
+      "id": "enemy",
+      "name": "Enemy",
+      "entities": [
+        {
+          "id": "enemy-root",
+          "name": "Enemy",
+          "parent": null,
+          "active": true,
+          "transform": {
+            "position": [
+              0,
+              0,
+              0
+            ],
+            "rotation": [
+              0,
+              0,
+              0
+            ],
+            "scale": [
+              1,
+              1,
+              1
+            ]
+          },
+          "scripts": [
+            {
+              "script": "builtin:Patrol",
+              "params": {}
+            }
+          ],
+          "mesh": {
+            "shape": "capsule",
+            "color": "#cc3333",
+            "metalness": 0,
+            "roughness": 0.7,
+            "emissive": "#000000",
+            "emissiveIntensity": 1,
+            "map": null,
+            "normalMap": null,
+            "normalScale": 1,
+            "roughnessMap": null,
+            "metalnessMap": null,
+            "emissiveMap": null,
+            "tiling": [
+              1,
+              1
+            ],
+            "opacity": 1,
+            "doubleSided": false,
+            "castShadow": true,
+            "receiveShadow": true
+          },
+          "rigidBody": {
+            "type": "character",
+            "mass": 0,
+            "lockRotation": false,
+            "gravityScale": 1,
+            "damping": 0,
+            "restitution": 0,
+            "planar": false
+          }
+        }
+      ]
+    }
+  ],
+  "scripts": []
+}

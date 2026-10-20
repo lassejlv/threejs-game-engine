@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "First Game",
+  "settings": { "background": "#223344", "gravity": 20 },
+  "entities": [
+    { "id": "cam", "name": "Camera", "parent": null, "active": true, "transform": { "position": [0, 4, 10], "rotation": [-15, 0, 0], "scale": [1, 1, 1] }, "camera": { "fov": 50, "near": 0.1, "far": 500, "main": true }, "scripts": [] },
+    { "id": "box", "name": "Crate", "parent": null, "active": true, "transform": { "position": [0, 2, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] }, "mesh": { "shape": "box", "color": "#aa7744" }, "rigidBody": { "kinematic": true, "mass": 2 }, "collider": { "shape": "box" }, "scripts": [{ "script": "builtin:Rotate", "params": { "speed": 45 } }] },
+    { "id": "lid", "name": "Lid", "parent": "box", "active": true, "transform": { "position": [0, 0.6, 0], "rotation": [0, 0, 0], "scale": [1, 0.2, 1] }, "mesh": { "shape": "box", "color": "#553311" }, "scripts": [] }
+  ],
+  "scripts": [{ "id": "s1", "name": "Hello", "source": "export default { start(ctx) { ctx.log('hi') } }" }]
+}

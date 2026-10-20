@@ -1,6 +1,7 @@
 import { AudioContext as ThreeAudioContext } from 'three'
 import { createStore, type Engine } from '../engine'
 import { type AssetMeta, AssetLibrary } from './assetLibrary'
+import { parseProject, serializableProject } from './projectFormat'
 import type { ProjectSummary } from './storage/types'
 import { log } from './console'
 import {
@@ -13,7 +14,6 @@ import {
   expandEntities,
   instantiatePrefab,
   newId,
-  parseProject,
   type PrefabDoc,
   type ProjectDoc,
   type SceneDoc,
@@ -728,7 +728,7 @@ export function newFromTemplate(template: Template): void {
 
 export function exportProject(): void {
   const d = state().doc
-  download(`${slug(d.name)}.json`, new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }))
+  download(`${slug(d.name)}.json`, new Blob([JSON.stringify(serializableProject(d), null, 2)], { type: 'application/json' }))
 }
 
 export async function importProject(file: File): Promise<void> {

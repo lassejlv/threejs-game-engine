@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "name": "Second Game",
+  "settings": { "layerNames": ["Default", "Player"] },
+  "scenes": [
+    {
+      "id": "level",
+      "name": "Level",
+      "settings": { "background": "#101820", "fog": true },
+      "entities": [
+        { "id": "ground", "name": "Ground", "parent": null, "active": true, "transform": { "position": [0, -0.5, 0], "rotation": [0, 0, 0], "scale": [20, 1, 20] }, "mesh": { "shape": "box", "color": "#557744" }, "collider": { "shape": "box" }, "scripts": [] },
+        { "id": "e1", "name": "Enemy 1", "parent": null, "active": true, "transform": { "position": [3, 1, 0], "rotation": [0, 90, 0], "scale": [1, 1, 1] }, "prefab": "enemy", "overrides": { "enemy-root": { "mesh": { "color": "#ff0000" } } }, "scripts": [] },
+        { "id": "sun", "name": "Sun", "parent": null, "active": true, "transform": { "position": [5, 10, 5], "rotation": [-50, 30, 0], "scale": [1, 1, 1] }, "light": { "type": "directional", "color": "#ffffff", "intensity": 2, "castShadow": true }, "scripts": [] }
+      ],
+      "ui": [{ "id": "ui1", "type": "text", "name": "Score", "text": "Score {score}" }]
+    }
+  ],
+  "prefabs": [
+    { "id": "enemy", "name": "Enemy", "entities": [{ "id": "enemy-root", "name": "Enemy", "parent": null, "active": true, "transform": { "position": [0, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1] }, "mesh": { "shape": "capsule", "color": "#cc3333" }, "rigidBody": { "type": "character" }, "scripts": [{ "script": "builtin:Patrol", "params": {} }] }] }
+  ],
+  "scripts": []
+}

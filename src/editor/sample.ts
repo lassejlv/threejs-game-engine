@@ -7,6 +7,7 @@ import {
   defaultProjectSettings,
   defaultSettings,
   type EntityDoc,
+  FORMAT_VERSION,
   instantiatePrefab,
   type MeshDoc,
   newId,
@@ -457,5 +458,5 @@ export function sampleProject(): ProjectDoc {
     ui: [],
   }
 
-  return { version: 2, name: 'Coin Rush', settings: defaultProjectSettings(), scenes: [coinRush, bonusRoom], prefabs, scripts }
+  return { version: FORMAT_VERSION, name: 'Coin Rush', settings: defaultProjectSettings(), scenes: [coinRush, bonusRoom], prefabs, scripts }
 }

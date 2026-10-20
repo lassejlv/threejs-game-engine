@@ -1,6 +1,7 @@
 import type { AssetMeta } from './assetLibrary'
 import { log } from './console'
-import { parseProject, type ProjectDoc } from './document'
+import type { ProjectDoc } from './document'
+import { checkReferences, parseProject, serializableProject } from './projectFormat'
 import { buildBundle, readBundle } from './bundle'
 import { assetLibrary, download, editorStore, newFromTemplate, replaceDoc, slug } from './editor'
 import { sampleProject } from './sample'
@@ -69,7 +70,19 @@ export async function bootProjects(options: { store?: ProjectStore } = {}): Prom
       projects = await store.list()
     }
     const last = recall(`${LAST_PROJECT}:${store.kind}`)
-    await openProject(projects.find((p) => p.id === last)?.id ?? projects[0].id)
+    // The last project first; if a file is broken, say why and open the next one.
+    const order = [...projects].sort((a, b) => Number(b.id === last) - Number(a.id === last))
+    let opened = false
+    for (const project of order) {
+      try {
+        await openProject(project.id)
+        opened = true
+        break
+      } catch (error) {
+        log('error', `Could not open "${project.name}" (${project.id}):`, error instanceof Error ? error.message : error)
+      }
+    }
+    if (!opened) await createProject(sampleProject())
     startAutosave()
   } catch (error) {
     setStorage({ state: 'error', error: describe(error) })
@@ -104,6 +117,7 @@ export async function openProject(id: string): Promise<void> {
   await ensureSaved()
   setStorage({ state: 'loading', error: null })
   const doc = parseProject(await store.load(id))
+  for (const warning of checkReferences(doc)) log('warn', warning)
   const assets = await assetLibrary.open(store, id)
   lastSaved = doc // before replaceDoc, so opening isn't mistaken for an edit
   replaceDoc(doc)
@@ -117,7 +131,7 @@ export async function openProject(id: string): Promise<void> {
 export async function createProject(doc: ProjectDoc, assets: { meta: AssetMeta; blob: Blob }[] = []): Promise<void> {
   if (!store) throw new Error('Projects are not ready yet')
   await ensureSaved()
-  const summary = await store.create(doc)
+  const summary = await store.create(serializableProject(doc))
   for (const { meta, blob } of assets) await store.writeAsset(summary.id, meta, blob)
   await openProject(summary.id)
   log('log', `Created "${doc.name}" in ${store.label}.`)
@@ -167,7 +181,7 @@ export async function importProjectFile(file: File): Promise<void> {
 /** File → Export project: the document and every asset in one .zip. */
 export async function exportBundle(): Promise<void> {
   const { doc } = editorStore.get()
-  download(`${slug(doc.name)}.zip`, await buildBundle(doc, assetLibrary.entries()))
+  download(`${slug(doc.name)}.zip`, await buildBundle(serializableProject(doc), assetLibrary.entries()))
 }
 
 export async function duplicateProject(id: string): Promise<ProjectSummary | null> {
@@ -230,7 +244,7 @@ export async function saveNow(): Promise<void> {
   setStorage({ state: 'saving' })
   saving = (async () => {
     try {
-      await target.save(id, doc)
+      await target.save(id, serializableProject(doc))
       lastSaved = doc
       if (editorStore.get().storage.projectId === id) setStorage({ state: 'saved', error: null })
       // Keep the project list's names and order current.
