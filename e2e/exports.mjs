@@ -9,7 +9,7 @@
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { assert, BROWSER, budgets, collectErrors, countColors, describeGpu, failureShot, launch, logger, serveDir, startDevServer } from './harness.mjs'
+import { BROWSER, assert, budgets, collectErrors, countColors, describeGpu, failureShot, launch, logger, serveDir, startDevServer, watchdog } from './harness.mjs'
 
 const log = logger('exports')
 const PORT = Number(process.env.E2E_EXPORT_PORT ?? 5209)
@@ -97,11 +97,13 @@ async function main() {
   const out = mkdtempSync(join(tmpdir(), 'ge-exports-'))
   let browser
   let page
+  let editor
+  const stopWatchdog = watchdog('exports', 20 * 60_000, () => page ?? editor)
   try {
     await dev.ready()
     browser = await launch()
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true })
-    const editor = await context.newPage()
+    editor = await context.newPage()
     const editorErrors = collectErrors(editor)
     await editor.goto(dev.url)
     log(await describeGpu(editor))
@@ -190,6 +192,7 @@ async function main() {
     console.error(`[exports] screenshot saved to ${shot}`)
     process.exitCode = 1
   } finally {
+    stopWatchdog()
     await browser?.close().catch(() => {})
     dev.stop()
   }

@@ -8,7 +8,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { assert, budgets, collectErrors, countColors, describeGpu, failureShot, launch, logger, startDevServer } from './harness.mjs'
+import { assert, budgets, collectErrors, countColors, describeGpu, failureShot, launch, logger, startDevServer, watchdog } from './harness.mjs'
 
 const log = logger('smoke')
 const PORT = Number(process.env.E2E_PORT ?? 5199)
@@ -19,6 +19,7 @@ async function main() {
   process.on('SIGTERM', () => process.exit(143))
   let browser
   let page
+  const stopWatchdog = watchdog('smoke', 10 * 60_000, () => page)
   try {
     log(`starting dev server on ${dev.url}`)
     await dev.ready()
@@ -142,6 +143,7 @@ async function main() {
     console.error(`[smoke] screenshot saved to ${shot}`)
     process.exitCode = 1
   } finally {
+    stopWatchdog()
     await browser?.close().catch(() => {})
     dev.stop()
   }

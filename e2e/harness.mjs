@@ -135,3 +135,19 @@ export async function failureShot(page, name) {
   await page?.screenshot({ path: shot }).catch(() => {})
   return shot
 }
+
+/**
+ * Fails the run after `ms` (E2E_TIMEOUT_MS overrides it) with a screenshot of the current page,
+ * so a hung page (a frozen main thread blocks page.evaluate forever) can't eat the CI job's time.
+ */
+export function watchdog(name, ms, currentPage) {
+  const limit = Number(process.env.E2E_TIMEOUT_MS ?? ms)
+  const timer = setTimeout(async () => {
+    console.error(`[${name}:${BROWSER}] FAIL: timed out after ${Math.round(limit / 1000)} s`)
+    const shot = await Promise.race([failureShot(currentPage(), `${name}-timeout`), sleep(10_000)])
+    if (shot) console.error(`[${name}:${BROWSER}] screenshot saved to ${shot}`)
+    process.exit(1)
+  }, limit)
+  timer.unref()
+  return () => clearTimeout(timer)
+}
