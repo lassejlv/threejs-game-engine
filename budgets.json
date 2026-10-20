@@ -1,0 +1,10 @@
+{
+  "$comment": "Performance and size budgets, checked in CI (scripts/check-budgets.mjs, e2e/smoke.mjs, e2e/exports.mjs). Raise a number only on purpose, in the same commit as the change that needs it.",
+  "playerBytes": 5600000,
+  "playerWebgpuBytes": 6300000,
+  "editorInitialGzipBytes": 400000,
+  "coinRushDrawCalls": 55,
+  "coinRushTriangles": 25000,
+  "exportStartScreenMs": 15000,
+  "exportFirstFrameMs": 30000
+}

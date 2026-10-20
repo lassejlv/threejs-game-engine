@@ -2,9 +2,11 @@ import { AudioContext as ThreeAudioContext, PerspectiveCamera } from 'three'
 import { logListeners } from '../editor/console'
 import { parseProject } from '../editor/projectFormat'
 import type { AssetResolver } from '../editor/runtime/nodes'
+import { watchGraphics } from '../editor/runtime/graphicsNotice'
 import { createPlayScene } from '../editor/runtime/playScene'
 import { installWebGPUKit, type WebGPUKit } from '../editor/runtime/rendererKit'
 import { Engine } from '../engine'
+import { showErrors } from './errorScreen'
 
 /**
  * Standalone game player. An exported game is one HTML file that sets
@@ -52,6 +54,12 @@ export async function startPlayer(gpu?: WebGPUKit): Promise<void> {
     engine.dispose()
     engine = new Engine({ container })
   }
+  // Which renderer runs, for anyone inspecting the page (and the export tests).
+  container.dataset.renderer = engine.backendName
+  showErrors(engine)
+  watchGraphics(engine)
+  // ?e2e exposes the engine to automated tests; nothing in a game depends on it.
+  if (new URLSearchParams(location.search).has('e2e')) Object.assign(window, { __game: { engine } })
   const fallbackCamera = new PerspectiveCamera(60, 1, 0.1, 1000)
   fallbackCamera.position.set(0, 5, 10)
   fallbackCamera.lookAt(0, 0, 0)

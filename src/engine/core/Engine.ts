@@ -67,6 +67,10 @@ export interface EngineEvents {
   sceneLoaded: { name: string }
   resize: { width: number; height: number }
   error: { error: unknown }
+  /** The GPU context was lost (driver reset, too many contexts). `recoverable` is false for a lost WebGPU device. */
+  contextLost: { recoverable: boolean }
+  /** The context came back; three re-uploads its resources, anything rendered once must be redone. */
+  contextRestored: Record<string, never>
   dispose: Record<string, never>
 }
 
@@ -208,6 +212,7 @@ export class Engine {
 
     this._camera = new PerspectiveCamera(60, 1, 0.1, 1000)
     this.input.attach(this.canvas)
+    this.watchContext()
 
     // Entities with a Transform live in the scene graph.
     this.world.onAdd(Transform, (entity, object) => {
@@ -234,6 +239,30 @@ export class Engine {
     if (!this.isWebGPU) return 'WebGL 2'
     const backend = (this.renderer as WebGPURenderer).backend as { isWebGPUBackend?: boolean }
     return backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2 (WebGPU fallback)'
+  }
+
+  /** True between a lost GPU context and its restoration. */
+  contextLost = false
+
+  private watchContext(): void {
+    if (this.renderer instanceof WebGLRenderer) {
+      // three listens too: it calls preventDefault (so the browser may restore) and re-creates its GPU state on restore.
+      this.canvas.addEventListener('webglcontextlost', () => {
+        this.contextLost = true
+        this.events.emit('contextLost', { recoverable: true })
+      })
+      this.canvas.addEventListener('webglcontextrestored', () => {
+        this.contextLost = false
+        this.events.emit('contextRestored', {})
+      })
+    } else {
+      const renderer = this.renderer as WebGPURenderer & { onDeviceLost: (info: { message: string }) => void }
+      renderer.onDeviceLost = (info) => {
+        console.error('[engine] WebGPU device lost:', info.message)
+        this.contextLost = true
+        this.events.emit('contextLost', { recoverable: false })
+      }
+    }
   }
 
   /** Custom render path (post-processing). Setting a new one disposes the old one. */

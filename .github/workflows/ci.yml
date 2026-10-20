@@ -25,6 +25,8 @@ jobs:
       - run: npm test
       - run: npm run test:server
       - run: npm run build
+      - name: Size budgets
+        run: node scripts/check-budgets.mjs
 
   e2e:
     name: Browser smoke test

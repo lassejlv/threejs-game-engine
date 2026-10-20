@@ -21,6 +21,7 @@ import {
 import { saveNow } from '../projects'
 import { editorCamera, getOrbit } from '../runtime/editorCamera'
 import { createEditScene, sceneView } from '../runtime/editScene'
+import { watchGraphics } from '../runtime/graphicsNotice'
 import { createPlayScene } from '../runtime/playScene'
 import { installWebGPUKit, type WebGPUKit } from '../runtime/rendererKit'
 import { BottomPanel } from './ProjectPanel'
@@ -131,6 +132,7 @@ export function Editor() {
               scene={scene}
               onReady={(e) => {
                 attachEngine(e)
+                watchGraphics(e)
                 setEngine(e)
                 if (import.meta.env.DEV) Object.assign(window, { __engine: e })
               }}

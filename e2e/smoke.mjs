@@ -1,96 +1,31 @@
-// Browser smoke test: boots the editor, plays the sample project and collects a coin.
-// Run with `npm run test:e2e`. Not part of `npm test` (vitest only includes src/**/*.test.ts).
+// Browser smoke test: the editor loads, renders Coin Rush, plays it, a coin
+// can be collected, the scene stays within its draw-call budget, and the game
+// survives the browser resetting the graphics context.
 //
-// Env:
-//   E2E_PORT       dev server port (default 5199)
-//   E2E_HEADED=1   show the browser
-//   E2E_SCREENSHOT path to save a screenshot of the final state (also saved on failure)
-import { spawn } from 'node:child_process'
-import { mkdirSync, mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { setTimeout as sleep } from 'node:timers/promises'
-import { chromium } from 'playwright'
+// Run with `npm run test:e2e` (E2E_BROWSER=firefox|webkit for other browsers).
+// Not part of `npm test` (vitest only includes src/**/*.test.ts).
 
+import { assert, budgets, collectErrors, countColors, failureShot, launch, logger, startDevServer } from './harness.mjs'
+
+const log = logger('smoke')
 const PORT = Number(process.env.E2E_PORT ?? 5199)
-const URL = `http://localhost:${PORT}/`
-const SERVER_TIMEOUT_MS = 120_000
-const FILES_PORT = Number(process.env.E2E_FILES_PORT ?? PORT + 1)
-const PROJECTS_DIR = mkdtempSync(join(tmpdir(), 'ge-e2e-projects-'))
-
-function log(...args) {
-  console.log('[e2e]', ...args)
-}
-
-function startServer() {
-  const server = spawn('npm', ['run', 'dev', '--', '--port', String(PORT), '--strictPort'], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: process.platform !== 'win32', // own process group, so we can kill vite and its children
-    // A throwaway projects folder and file-server port, so the test never sees (or touches) real projects.
-    env: { ...process.env, BROWSER: 'none', FORCE_COLOR: '0', GE_PROJECTS_DIR: PROJECTS_DIR, GE_FILES_PORT: String(FILES_PORT) },
-  })
-  let output = ''
-  server.stdout.on('data', (chunk) => (output += chunk))
-  server.stderr.on('data', (chunk) => (output += chunk))
-  const stop = () => {
-    if (server.exitCode !== null) return
-    try {
-      if (process.platform === 'win32') server.kill()
-      else process.kill(-server.pid, 'SIGTERM')
-    } catch {
-      // already gone
-    }
-  }
-  return { server, stop, output: () => output }
-}
-
-async function waitForServer(server, output) {
-  const deadline = Date.now() + SERVER_TIMEOUT_MS
-  while (Date.now() < deadline) {
-    if (server.exitCode !== null) throw new Error(`dev server exited early (${server.exitCode}):\n${output()}`)
-    try {
-      const res = await fetch(URL)
-      if (res.ok) return
-    } catch {
-      // not up yet
-    }
-    await sleep(250)
-  }
-  throw new Error(`dev server did not start within ${SERVER_TIMEOUT_MS / 1000}s:\n${output()}`)
-}
-
-function assert(condition, message) {
-  if (!condition) throw new Error(`Assertion failed: ${message}`)
-}
 
 async function main() {
-  const { server, stop, output } = startServer()
-  const cleanup = () => stop()
-  process.on('exit', cleanup)
+  const dev = startDevServer(PORT)
   process.on('SIGINT', () => process.exit(130))
   process.on('SIGTERM', () => process.exit(143))
-
   let browser
   let page
   try {
-    log(`starting dev server on ${URL}`)
-    await waitForServer(server, output)
+    log(`starting dev server on ${dev.url}`)
+    await dev.ready()
     log('dev server ready')
 
-    browser = await chromium.launch({
-      headless: !process.env.E2E_HEADED,
-      args: ['--no-sandbox', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-    })
-    const context = await browser.newContext({ viewport: { width: 1400, height: 900 } })
-    page = await context.newPage()
-
-    const errors = []
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(`console.error: ${msg.text()}`)
-    })
-    page.on('pageerror', (error) => errors.push(`pageerror: ${error.stack ?? error.message}`))
-
-    await page.goto(URL, { waitUntil: 'load' })
+    browser = await launch()
+    page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage()
+    // three logs a lost context with console.error in some browsers; the test causes that on purpose.
+    const errors = collectErrors(page, [/Context Lost/i])
+    await page.goto(dev.url, { waitUntil: 'load' })
 
     // The editor renders into a canvas with a real size.
     const canvas = page.locator('canvas').first()
@@ -99,31 +34,17 @@ async function main() {
     assert(box && box.width > 100 && box.height > 100, `canvas has a usable size (got ${JSON.stringify(box)})`)
     log(`canvas ${Math.round(box.width)}x${Math.round(box.height)}`)
 
-    // The sample project is loaded: scene title and entities in the hierarchy.
+    // The sample project is open: it is saved in the throwaway projects folder, and its entities are in the hierarchy.
+    await page.locator('.save-status', { hasText: /Saved/ }).waitFor({ timeout: 30_000 })
     const hierarchy = page.locator('.hierarchy')
     await hierarchy.getByText('Coin Rush', { exact: true }).first().waitFor({ timeout: 15_000 })
     for (const name of ['Player', 'Coins', 'Game Manager']) {
       await hierarchy.locator('.tree-name', { hasText: name }).first().waitFor({ timeout: 5_000 })
     }
-    log('hierarchy shows Coin Rush')
+    log(`hierarchy shows Coin Rush (${await page.locator('.save-status').innerText()})`)
 
-    // Give WebGL a moment, then check that the canvas actually drew something.
     await page.waitForTimeout(1000)
-    // WebGL canvases can't be read back without preserveDrawingBuffer, so inspect a screenshot instead.
-    const shot = await canvas.screenshot()
-    const colors = await page.evaluate(async (base64) => {
-      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
-      const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }))
-      const probe = document.createElement('canvas')
-      probe.width = 64
-      probe.height = 64
-      const ctx = probe.getContext('2d')
-      ctx.drawImage(bitmap, 0, 0, 64, 64)
-      const data = ctx.getImageData(0, 0, 64, 64).data
-      const seen = new Set()
-      for (let i = 0; i < data.length; i += 4) seen.add(`${data[i] >> 4},${data[i + 1] >> 4},${data[i + 2] >> 4}`)
-      return seen.size
-    }, shot.toString('base64'))
+    const colors = await countColors(page, canvas)
     log(`canvas shows ${colors} distinct colors`)
     assert(colors > 8, `canvas renders a scene, not a flat color (${colors} colors)`)
 
@@ -133,6 +54,12 @@ async function main() {
     const hud = page.locator('.gu-hud')
     await hud.locator('.gu-stat-value').first().waitFor({ timeout: 15_000 })
     await page.waitForTimeout(5000)
+
+    // Performance budget: instancing keeps Coin Rush's draw calls low (budgets.json).
+    const stats = await page.evaluate(() => window.__engine.stats.get())
+    log(`play stats: ${stats.drawCalls} draw calls, ${stats.triangles} triangles, ${stats.frameMs.toFixed(1)} ms CPU`)
+    assert(stats.drawCalls > 0 && stats.drawCalls <= budgets.coinRushDrawCalls, `draw calls within budget (${stats.drawCalls} > ${budgets.coinRushDrawCalls})`)
+    assert(stats.triangles <= budgets.coinRushTriangles, `triangles within budget (${stats.triangles} > ${budgets.coinRushTriangles})`)
 
     const before = (await hud.textContent()) ?? ''
     log(`HUD before moving: ${JSON.stringify(before)}`)
@@ -154,20 +81,38 @@ async function main() {
     log(`HUD after moving: ${JSON.stringify(text)}`)
     assert(/^[1-9]\d* \/ 32$/.test(text.trim()), `collected a coin (HUD says ${JSON.stringify(text)})`)
 
-    assert(errors.length === 0, `no console errors or page errors, got:\n  ${errors.join('\n  ')}`)
+    // The browser resets the graphics context: the game must come back without a reload.
+    const lost = await page.evaluate(() => {
+      const gl = document.querySelector('canvas').getContext('webgl2')
+      const ext = gl?.getExtension('WEBGL_lose_context')
+      if (!ext) return false
+      ext.loseContext()
+      window.__restoreGl = () => ext.restoreContext()
+      return true
+    })
+    if (lost) {
+      await page.locator('.graphics-notice', { hasText: 'Restoring' }).waitFor({ timeout: 5_000 })
+      await page.waitForTimeout(500)
+      await page.evaluate(() => window.__restoreGl())
+      await page.locator('.graphics-notice').waitFor({ state: 'detached', timeout: 10_000 })
+      const frame = await page.evaluate(() => window.__engine.time.frame)
+      await page.waitForTimeout(2000)
+      const after = await countColors(page, canvas)
+      const advanced = (await page.evaluate(() => window.__engine.time.frame)) - frame
+      log(`after a context loss and restore: ${after} colors, ${advanced} frames`)
+      assert(after > 8 && advanced > 0, 'the game renders and runs again after the context is restored')
+    } else log('WEBGL_lose_context unavailable: skipped the context-loss check')
 
-    if (process.env.E2E_SCREENSHOT) await page.screenshot({ path: process.env.E2E_SCREENSHOT })
+    assert(errors.length === 0, `no console errors or page errors, got:\n  ${errors.join('\n  ')}`)
     log('PASS')
   } catch (error) {
-    const shot = process.env.E2E_SCREENSHOT ?? 'test-results/e2e-failure.png'
-    mkdirSync(dirname(shot), { recursive: true })
-    if (page) await page.screenshot({ path: shot }).catch(() => {})
-    console.error('[e2e] FAIL:', error instanceof Error ? error.message : error)
-    if (page) console.error(`[e2e] screenshot saved to ${shot}`)
+    const shot = await failureShot(page, 'smoke-failure')
+    console.error('[smoke] FAIL:', error instanceof Error ? error.message : error)
+    console.error(`[smoke] screenshot saved to ${shot}`)
     process.exitCode = 1
   } finally {
     await browser?.close().catch(() => {})
-    stop()
+    dev.stop()
   }
 }
 

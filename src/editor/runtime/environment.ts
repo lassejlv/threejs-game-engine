@@ -57,7 +57,14 @@ export class SceneEnvironment {
     private readonly assets: AssetResolver,
   ) {
     engine.scene.onBeforeRender = this.swapSky
+    // A restored GPU context comes back without the prefiltered environment map: build it again.
+    this.offRestore = engine.events.on('contextRestored', () => {
+      this.skyKey = ''
+      if (this.settings) this.applySky(this.settings)
+    })
   }
+
+  private readonly offRestore: () => void
 
   private readonly swapSky = (_renderer: unknown, scene: Scene, camera: Camera): void => {
     if (this.sky && scene.background === this.sky && (camera as OrthographicCamera).isOrthographicCamera) scene.background = this.flatSky
@@ -76,6 +83,7 @@ export class SceneEnvironment {
 
   dispose(): void {
     this.disposed = true
+    this.offRestore()
     this.sky?.dispose()
     this.flatSky?.dispose()
     this.envResource?.dispose()
